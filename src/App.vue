@@ -33,12 +33,12 @@
             </el-tooltip>
         </el-menu-item>
         <el-menu-item index="6" @click="handleLogout">
-            用户管理
-            <!-- <div class="demo-basic--circle" style="margin-top: -32px;">
+            <!-- 用户管理 -->
+            <div class="demo-basic--circle" style="margin-top: -32px;">
                 <div class="block">
                     <el-avatar :size="30" :src="circleUrl" @click="handleLogout"/>
                 </div>
-            </div> -->
+            </div>
         </el-menu-item>
     </el-menu>
     <router-view></router-view>
