@@ -1,23 +1,29 @@
 <template>
     <el-form ref="ruleFormRef" style="max-width: 600px" :model="ruleForm" :rules="rules" label-width="auto"
         label-position="left">
-        <el-form-item prop="processor" required>
-            <el-col :span="12">
+        <el-form-item v-if="(update_task || taskType === TaskTypes.TYPE_SCRIPT)" prop="processor" required>
+            <el-col :span="11">
                 <el-form-item prop="processor" label="选择插件" required>
                     <el-tree-select v-model="ruleForm.processor" lazy :load="load" :props="processor_props"
-                        @change="handleSelectionChange" style="width: 240px" />
+                        @change="handleSelectionChange" style="width: 240px" :disabled="update_task" />
                 </el-form-item>
             </el-col>
             <el-col :span="1">
             </el-col>
-            <el-col :span="11">
+            <el-col :span="10">
                 <el-form-item prop="processor_version" label="选择版本" required>
                     <el-select v-model="ruleForm.processor_version" value-key="id" placeholder="Select"
                         style="width: 240px">
-                        <el-option v-for="item in version_options" :key="item.id" :label="item.label" :value="item" />
+                        <el-option v-for="item in version_options" :key="item.id" :label="item.label"
+                            :value="item.id" />
                     </el-select>
                 </el-form-item>
             </el-col>
+            <el-col :span="2">
+                        <el-tooltip class="box-item" effect="dark" content="点击查看插件文件列表！">
+            <el-button v-if="ruleForm.processor_version != '' && taskType === TaskTypes.TYPE_SCRIPT" type="primary" @click="show_detail = true" style="margin-top:-3px;margin-left: 3px;" :icon="Files" plain></el-button>
+        </el-tooltip>    
+        </el-col>
         </el-form-item>
 
         <el-form-item label="任务名称" prop="task_name">
@@ -57,17 +63,31 @@
         <el-form-item label="选择算力集群" prop="power_tag">
             <el-select filterable v-model="ruleForm.power_tag" value-key="id" placeholder="请选择算力集群标签"
                 style="width: 223px;margin-right:6px;">
-                <el-option v-for="item in power_options" :key="item.id" :label="item.name" :value="item" />
+                <el-option v-for="item in power_options" :key="item.id" :label="item.name" :value="item.id" />
             </el-select>
             <!-- <ChoosePowerNodes ref="choose_power_nodes" /> -->
         </el-form-item>
         <el-form-item label="任务描述" prop="desc" required>
             <el-input v-model="ruleForm.desc" type="textarea" placeholder="请输入任务描述信息，DAG图中用于显示！" />
         </el-form-item>
+        <el-form-item v-if="taskType === TaskTypes.TYPE_SHELL" label="shell命令"
+            prop="shell" required>
+            <el-input v-model="ruleForm.shell" type="textarea" :rows="6" placeholder="输入shell命令，可以多行！" />
+        </el-form-item>
+
+        <el-form-item v-if="taskType === TaskTypes.TYPE_CLICKHOUSE" label="ck-sql命令"
+            prop="shell" required>
+            <el-input v-model="ruleForm.shell" type="textarea" :rows="6" placeholder="输入clickhouse的SQL命令，可以多行！" />
+        </el-form-item>
+
+        <el-form-item v-if="taskType === TaskTypes.TYPE_ODPS" label="odps-sql命令"
+            prop="shell" required>
+            <el-input v-model="ruleForm.shell" type="textarea" :rows="6" placeholder="输入odps的SQL命令，可以多行！" />
+        </el-form-item>
         <el-divider border-style="dashed" />
 
         <el-form-item label="任务参数" prop="configs">
-            <CreateNodeConfig ref="config_vue" />
+            <CreateNodeConfig ref="config_vue" :show_description="false" />
         </el-form-item>
         <el-divider border-style="dashed" />
         <el-form-item label="依赖任务" prop="prev_task">
@@ -76,24 +96,51 @@
 
         <el-divider border-style="dashed" />
         <el-form-item>
-            <el-button type="primary" @click="submitForm(ruleFormRef)">
+            <el-button v-if="update_task" type="primary" @click="submitForm(ruleFormRef)" :icon="Edit">
+                修改任务
+            </el-button>
+            <el-button v-else type="primary" @click="submitForm(ruleFormRef)">
                 创建任务
             </el-button>
-            <el-button @click="resetForm(ruleFormRef)">重置参数</el-button>
+            <el-popconfirm confirm-button-text="确定" cancel-button-text="取消" :icon="InfoFilled" icon-color="#626AEF"
+                title="确定删除任务吗?" @confirm="DeleteTask" @cancel="cancelEvent">
+                <template #reference>
+                    <el-button v-if="update_task" style="margin-left: 10px;" type="warning"
+                        :icon="Delete">删除任务</el-button>
+                </template>
+            </el-popconfirm>
+
+            <el-button @click="resetForm(ruleFormRef)" :icon="RefreshLeft">重置参数</el-button>
         </el-form-item>
     </el-form>
+        <el-drawer v-model="show_detail" :direction="drawer_direction" size="80%" :destroy-on-close="true"
+        :append-to-body="true">
+        <template #header>
+            <h4 style="width: 100px"></h4>
+        </template>
+        <template #default>
+            <Package :processor_id="procId" :upload_id="ruleForm.processor_version" />
+        </template>
+    </el-drawer>
 </template>
 
 <script lang="ts">
 import CreateNodeConfig from './CreateNodeConfig.vue';
 import CreateNodePrevTasks from './CreateNodePrevTasks.vue';
 import ChoosePowerNodes from './ChoosePowerNodes.vue';
+import { ElMessage } from 'element-plus';
+import emitter from './EventBus';
+import { Edit, Delete, RefreshLeft, InfoFilled, Files } from '@element-plus/icons-vue'
+import { DrawerProps } from 'element-plus';
+import Package from './package.vue'
+
 export default {
     name: 'App',
     components: {
         CreateNodeConfig,
         CreateNodePrevTasks,
         ChoosePowerNodes,
+        Package,
     },
 };
 
@@ -101,26 +148,21 @@ export default {
 </script>
 
 <script lang="ts" setup>
-import { reactive, ref } from 'vue'
+import { reactive, ref, onMounted } from 'vue'
 
 import type { FormInstance, FormRules } from 'element-plus'
 import axios from 'axios'
 import qs from 'qs';
-
 import { defineProps } from 'vue';
 
-type PowerOption = {
-    id: string
-    name: string
-    desc: string
-}
 
-const power_value = ref<PowerOption>()
+const drawer_direction = ref<DrawerProps['direction']>('rtl')
+const show_detail = ref(false)
+const procId = ref()
 const power_options = ref([])
-
 const ChangcePowerNodes = (type) => {
     axios
-        .get('http://82.156.224.174:7001/pipeline/get_power_nodes/', {
+        .get('/pipeline/get_power_nodes/', {
             params: {
                 "type": type
             }
@@ -139,15 +181,31 @@ const ChangcePowerNodes = (type) => {
 
 const props = defineProps({
     pipeline_id: String,
+    task_info: Map,
+    task_type: Number,
 });
 
-
-const choose_power_nodes = ref(null)
 const config_vue = ref(null)
 const prev_tasks_vue = ref(null)
-
 const retry_times_radio = ref('1')
 const priority_radio = ref('6')
+const update_task = ref(false)
+
+const TaskTypes = {
+    TYPE_STREAM_DATA: -1,
+    TYPE_SCRIPT: 1,
+    TYPE_SPARK: 2,
+    TYPE_OOZIE: 3,
+    TYPE_ODPS: 4,
+    TYPE_SHELL: 5,
+    TYPE_DOCKER: 6,
+    TYPE_CLICKHOUSE: 7,
+    TYPE_V100: 8,
+}
+
+
+const taskType = ref(TaskTypes.TYPE_SCRIPT)
+
 interface RuleForm {
     processor: string
     processor_version: string
@@ -159,6 +217,7 @@ interface RuleForm {
     prev_task: string
     power_tag: string
     desc: string
+    shell: string
 }
 
 const ruleFormRef = ref<FormInstance>()
@@ -173,9 +232,8 @@ const ruleForm = reactive<RuleForm>({
     prev_task: "",
     power_tag: "ALL",
     desc: "",
+    shell: "",
 })
-
-const locationOptions = ['Home', 'Company', 'School']
 
 const rules = reactive<FormRules<RuleForm>>({
     processor: [
@@ -186,7 +244,7 @@ const rules = reactive<FormRules<RuleForm>>({
     ],
     task_name: [
         { required: true, message: '请输入任务名称', trigger: 'blur' },
-        { min: 1, max: 10, message: '长度不超过10个字符。', trigger: 'blur' },
+        { min: 1, max: 30, message: '长度不超过30个字符。', trigger: 'blur' },
     ],
     configs: [
         {
@@ -237,15 +295,93 @@ const rules = reactive<FormRules<RuleForm>>({
             trigger: 'change',
         },
     ],
+    shell: [
+        {
+            required: true,
+            message: '请输入shell命令',
+            trigger: 'change',
+        },
+    ],
 })
+
+onMounted(() => {
+    taskType.value = props.task_type!
+    console.log("0 init create node: ", taskType.value, props.task_info)
+
+    if (taskType.value == TaskTypes.TYPE_SCRIPT) {
+        ChangcePowerNodes("script")
+    } else if (taskType.value == TaskTypes.TYPE_SPARK) {
+        ChangcePowerNodes("spark")
+    } else if (taskType.value == TaskTypes.TYPE_OOZIE) {
+        ChangcePowerNodes("oozie")
+    } else if (taskType.value == TaskTypes.TYPE_ODPS) {
+        ChangcePowerNodes("odps")
+    } else if (taskType.value == TaskTypes.TYPE_SHELL) {
+        ChangcePowerNodes("shell")
+    } else if (taskType.value == TaskTypes.TYPE_DOCKER) {
+        ChangcePowerNodes("docker")
+    } else if (taskType.value == TaskTypes.TYPE_CLICKHOUSE) {
+        ChangcePowerNodes("clickhouse")
+    } else if (taskType.value == TaskTypes.TYPE_V100) {
+        ChangcePowerNodes("v100")
+    } else if (taskType.value == TaskTypes.TYPE_STREAM_DATA) {
+        ChangcePowerNodes("stream")
+    } else {
+        taskType.value = TaskTypes.TYPE_SCRIPT
+        ChangcePowerNodes("script")
+    }
+
+    if (props.task_info["task"]) {
+        ruleForm.processor = props.task_info.processor.name
+        procId.value = props.task_info.processor.id
+        var get_processor_data = [];
+        for (const item of props.task_info.version_list) {
+            get_processor_data.push({
+                id: item.id,
+                desc: item.name,
+                label: item.version,
+            })
+        }
+
+        version_options.value = get_processor_data;
+        console.log(get_processor_data)
+        ruleForm.processor_version = props.task_info.task.version_id
+        if (ruleForm.processor_version == -1) {
+            ruleForm.processor_version = props.task_info.version_list[0].id
+        }
+        ruleForm.task_name = props.task_info.task.name
+        ruleForm.retry_times = props.task_info.task.retry_count
+        if (ruleForm.retry_times <= 0 || ruleForm.retry_times >= 5) {
+            ruleForm.retry_times = 1
+        }
+
+        retry_times_radio.value = "" + ruleForm.retry_times
+        priority_radio.value = "" + props.task_info.task.priority
+        ruleForm.priority = props.task_info.task.priority
+        ruleForm.timeout = props.task_info.task.over_time
+        ruleForm.power_tag = props.task_info.task.server_tag
+        ruleForm.desc = props.task_info.task.description
+        var configs = props.task_info.task.config.split('\r\n')
+        for (const config of configs) {
+            var config_item = config.split('=')
+            console.log("config: ", config_item)
+            config_vue.value.AddConfig(config_item[0], config_item[1])
+        }
+
+        prev_tasks_vue.value.AddPrevTasks(props.task_info.rely_tasks)
+        console.log(ruleForm)
+        update_task.value = true
+        ruleForm.shell = props.task_info.processor.template
+    }
+});
 
 const handleSelectionChange = (value) => {
     // `value` 参数就是新选中的节点的 value 值
     console.log('新选中的节点值:', value);
     version_value.value = null
-    var proc_id = value.split('-')[2]
+    var proc_id = value.split('_')[1]
     axios
-        .post('http://82.156.224.174:7001/processor/view_history/' + proc_id + '/', "")
+        .post('/processor/view_history/' + proc_id + '/', "")
         .then(response => {
             // var json_obj = JSON.parse(response)
             var get_processor_data = [];
@@ -260,53 +396,119 @@ const handleSelectionChange = (value) => {
             version_options.value = get_processor_data;
             console.log(get_processor_data)
             ChangcePowerNodes("script")
+            procId.value = proc_id
         })
         .catch(error => console.log(error))
 };
+
+const cancelEvent = () => {
+}
+
+const DeleteTask = () => {
+    var params = {
+        "Task[id]": props.task_info.task.id
+    }
+
+    axios
+        .post('/pipeline/delete_task/' + props.pipeline_id + '/', qs.stringify(params))
+        .then(response => {
+            if (response.status != 200 || response.data.status != 0) {
+                ElMessage.warning("删除任务失败：" + response.data.info)
+            } else {
+                console.log(response.data)
+                emitter.emit("delete_task_success", props.task_info.task.id)
+                ElMessage.success("删除任务成功！")
+            }
+        })
+        .catch(error => {
+            ElMessage.error("创建任务失败：" + error)
+            console.log(error)
+        })
+}
 
 const submitForm = async (formEl: FormInstance | undefined) => {
     var config_forms = config_vue.value.GetConfigs()
     var config_str = ""
     for (const item of config_forms) {
         console.log(item.key, item.value)
-        config_str += item.key + "=" + item.value + "\n"
+        config_str += item.key + "=" + item.value + "\r\n"
     }
 
     var prev_tasks = prev_tasks_vue.value.GetPrevTasks()
     console.log(prev_tasks)
     var prev_tasks_str = ""
     for (const item of prev_tasks) {
-        console.log(item.pipeline.id, item.pipeline.name, item.task.id, item.task.name)
-        prev_tasks_str += item.task.id + ","
+        console.log(item.task_id, item.pipeline_id, item.task, item.pipeline)
+        if (item.task_id != 0) {
+            prev_tasks_str += item.task_id + ","
+        } else {
+            prev_tasks_str += "" + item.task.id + ","
+        }
     }
 
     console.log("pipeline_id: %s", props.pipeline_id)
     console.log(ruleForm)
+    var tmp_processor_id = "-1"
+    var tmp_version_id = "-1"
+    if (ruleForm.processor != "") {
+        tmp_processor_id = ruleForm.processor.split('_')[1]
+        tmp_version_id = ruleForm.processor_version
+    }
+
     var params = {
         "name": ruleForm.task_name,
         "config": config_str,
-        "template": "",
+        "template": ruleForm.shell,
         "retry_count": ruleForm.retry_times,
         "priority": ruleForm.priority,
         "over_time": ruleForm.timeout,
         "prev_task_ids": prev_tasks_str,
         "server_tag": ruleForm.power_tag,
         "description": ruleForm.desc,
-        "type": 1,
-        "processor_id": ruleForm.processor.split('-')[2],
-        "version_id": ruleForm.processor_version.id,
-        "use_processor": 1
+        "type": taskType.value,
+        "processor_id": tmp_processor_id,
+        "version_id": tmp_version_id,
+        "use_processor": 1,
     }
+
     console.log(params)
     if (!formEl) return
     await formEl.validate((valid, fields) => {
         if (valid) {
-            axios
-                .post('http://82.156.224.174:7001/pipeline/create_task/' + props.pipeline_id + '/', qs.stringify(params))
-                .then(response => {
-                })
-                .catch(error => console.log(error))
-            console.log('submit!')
+            if (update_task.value) {
+                axios
+                    .post('/pipeline/update_task/' + props.task_info.task.id + '/', qs.stringify(params))
+                    .then(response => {
+                        if (response.status != 200 || response.data.status != 0) {
+                            ElMessage.warning("修改任务失败：" + response.data.msg)
+                        } else {
+                            console.log(response.data)
+                            emitter.emit("update_task_success", response.data.task)
+                            ElMessage.success("修改任务成功！")
+                        }
+                    })
+                    .catch(error => {
+                        ElMessage.error("修改任务失败：" + error)
+                        console.log(error)
+                    })
+            } else {
+                axios
+                    .post('/pipeline/create_task/' + props.pipeline_id + '/', qs.stringify(params))
+                    .then(response => {
+                        if (response.status != 200 || response.data.status != 0) {
+                            ElMessage.warning("创建任务失败：" + response.data.msg)
+                        } else {
+                            console.log(response.data)
+                            emitter.emit("success_create_task", response.data.task)
+                            ElMessage.success("创建任务成功！")
+                        }
+                    })
+                    .catch(error => {
+                        ElMessage.error("创建任务失败：" + error)
+                        console.log(error)
+                    })
+            }
+
         } else {
             console.log('error submit!', fields)
         }
@@ -349,7 +551,7 @@ const load = (node, resolve) => {
     }
 
     axios
-        .get('http://82.156.224.174:7001/processor/get_processor_tree_async/', {
+        .get('/processor/get_processor_tree_async/', {
             params: params
         })
         .then(response => {
@@ -376,5 +578,9 @@ type VersionOption = {
 }
 const version_value = ref<VersionOption>()
 const version_options = ref([])
+
+defineExpose({
+    TaskTypes,
+});
 
 </script>

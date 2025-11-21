@@ -6,40 +6,41 @@
             <img v-else style="width: 100px" src="./images/blue_shardora.png" alt="Element logo" />
         </el-menu-item>
         <el-tooltip class="box-item" content="进入流程管理页面，管理自己的流程！">
-            <el-menu-item index="1" @click="toPipeline">流程管理</el-menu-item>
+            <el-menu-item v-if="show_menu" index="1" @click="toPipeline">流程管理</el-menu-item>
         </el-tooltip>
         <el-tooltip class="box-item" content="管理所有的计算任务！">
-            <el-menu-item index="2">所有任务</el-menu-item>
+            <el-menu-item v-if="show_menu" index="2" @click="toRuning">所有任务</el-menu-item>
         </el-tooltip>
         <el-tooltip class="box-item" content="管理插件，实现算法、数据、算力、模型的共享复用！">
-            <el-menu-item index="3">插件管理</el-menu-item>
+            <el-menu-item v-if="show_menu" index="3" @click="toProcessor">插件管理</el-menu-item>
         </el-tooltip>
         <el-tooltip class="box-item" content="进入平台统计大屏，包括算力，数据，模型，任务，用户统计信息！">
-            <el-menu-item index="7" @click="toDashboard">平台大屏</el-menu-item>
+            <el-menu-item v-if="show_menu" index="4" @click="toDashboard">平台大屏</el-menu-item>
         </el-tooltip>
-        <el-menu-item index="4" style="margin-top:0px;width:60px">
+        <el-tooltip class="box-item" content="solidity智能合约编辑管理！">
+            <el-menu-item v-if="show_solidty" index="5" @click="toSolidty">智能合约</el-menu-item>
+        </el-tooltip>
+        <el-menu-item index="5" style="margin-top:0px" class="no-underline">
+            <el-tooltip class="box-item" content="切换背景色！">
+                <el-checkbox fill="#409eff" v-model="checked1" style="margin-top:-15px;margin-left: -12px;float:right;"
+                    size="default" @change="toggleDark" />
+            </el-tooltip>
             <el-tooltip class="box-item" content="切换主题！">
-                <div class="hello">
-                    <div>
-                        <el-switch v-model="isDark" :active-icon="Moon" :inactive-icon="Sunny" inline-prompt
-                            @change="toggleDark" style="margin-top: 0px; width: 30px;margin-left:-10px;" />
-                    </div>
-                </div>
+                <el-color-picker size="small" style="margin-top:20px;margin-left: -19px;float:right;"
+                    v-model="themeColor" show-alpha :predefine="predefineColors" @change="logColor" />
             </el-tooltip>
         </el-menu-item>
-        <el-menu-item index="5" style="margin-top:0px">
-            <el-tooltip class="box-item" content="切换主题！">
-                <el-color-picker v-model="themeColor" show-alpha :predefine="predefineColors" @change="logColor" />
-            </el-tooltip>
-        </el-menu-item>
-        <el-menu-item index="6" @click="handleLogout">
-            <!-- 用户管理 -->
-            <div class="demo-basic--circle" style="margin-top: -32px;">
-                <div class="block">
-                    <el-avatar :size="30" :src="circleUrl" @click="handleLogout"/>
-                </div>
+        <el-dropdown trigger="click" @command="handleCommand">
+            <div class="user-menu-trigger">
+                <el-avatar :size="27" :src="circleUrl" style="margin-top: 7px;" />
             </div>
-        </el-menu-item>
+            <template #dropdown>
+                <el-dropdown-menu>
+                    <!-- <el-dropdown-item command="settings">修改密码</el-dropdown-item> -->
+                    <el-dropdown-item v-if="show_menu" divided command="logout">退出登录</el-dropdown-item>
+                </el-dropdown-menu>
+            </template>
+        </el-dropdown>
     </el-menu>
     <router-view></router-view>
 </template>
@@ -50,7 +51,7 @@ export default {
 </script>
 
 <script lang="ts" setup>
-import { ref, watch } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { reactive, toRefs } from 'vue'
 import { Sunny, Moon } from "@element-plus/icons-vue";
 import { useDark, useToggle } from "@vueuse/core";
@@ -58,25 +59,44 @@ import axios from 'axios';
 import { useRouter } from 'vue-router';
 import { ElConfigProvider } from 'element-plus';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
+import { ElMessage } from 'element-plus';
+import emitter from './components/EventBus';
+import { ElNotification } from 'element-plus';
 
+const show_menu = ref(false)
+const show_solidty = ref(true)
+const checked1 = ref(true)
+emitter.on("show_menu", (show) => {
+    show_menu.value = show
+    console.log("show_menu: ", show_menu.value)
+})
 // 从 localStorage 获取或设置默认主题色
 const themeColor = ref(localStorage.getItem('themeColor') || '#5F95FF');
 
 // 监听 themeColor 的变化
 watch(themeColor, (newColor) => {
-  // 动态修改 Element UI 的 --el-color-primary 变量
-  document.documentElement.style.setProperty('--el-color-primary', newColor);
-  // 同时修改其他相关的颜色变量
-  document.documentElement.style.setProperty('--el-color-primary-light-3', newColor);
-  document.documentElement.style.setProperty('--el-color-primary-light-5', newColor);
-  document.documentElement.style.setProperty('--el-color-primary-light-7', newColor);
-  document.documentElement.style.setProperty('--el-color-primary-light-8', newColor);
-  document.documentElement.style.setProperty('--el-color-primary-light-9', newColor);
+    // 动态修改 Element UI 的 --el-color-primary 变量
+    document.documentElement.style.setProperty('--el-color-primary', newColor);
+    // 同时修改其他相关的颜色变量
+    document.documentElement.style.setProperty('--el-color-primary-light-3', newColor);
+    document.documentElement.style.setProperty('--el-color-primary-light-5', newColor);
+    document.documentElement.style.setProperty('--el-color-primary-light-7', newColor);
+    document.documentElement.style.setProperty('--el-color-primary-light-8', newColor);
+    document.documentElement.style.setProperty('--el-color-primary-light-9', newColor);
 });
+
+onMounted(() => {
+    const token = localStorage.getItem('access_token');
+    if (token) {
+        show_menu.value = true
+    }
+
+});
+
 
 // 保存颜色到 localStorage
 const saveTheme = () => {
-  localStorage.setItem('themeColor', themeColor.value);
+    localStorage.setItem('themeColor', themeColor.value);
 };
 
 function logColor(val) {
@@ -99,11 +119,33 @@ document.documentElement.style.setProperty('--el-color-primary', themeColor.valu
 
 const router = useRouter();
 
+const handleCommand = async (command) => {
+    if (command === 'settings') {
+    } else if (command === 'logout') {
+        try {
+            const response = await axios.post('/rest_logout/', {
+            });
+
+            localStorage.setItem('access_token', '')
+            axios.defaults.headers.common['Authorization'] = ''; // 设置默认请求头
+            ElMessage.success('已退出登录');
+            show_menu.value = false
+            router.push('/login'); // 登录成功后跳转到主页
+        } catch (error) {
+            ElNotification({ title: "出现错误", message: "退出失败：" + error, type: "danger", position: 'top-left', })
+        }
+    }
+};
+
+const toSolidty = () => {
+    router.push('/solidity');
+}
+
 const handleLogout = async () => {
-            localStorage.removeItem('user-token');
-            delete axios.defaults.headers.common['Authorization'];
-            router.push('/login');
-            console.log("logout success.")
+    localStorage.removeItem('user-token');
+    delete axios.defaults.headers.common['Authorization'];
+    router.push('/login');
+    console.log("logout success.")
 
 
 };
@@ -116,6 +158,14 @@ const toPipeline = () => {
     router.push('/pipeline');
 }
 
+const toRuning = () => {
+    router.push('/runing');
+}
+
+const toProcessor = () => {
+    router.push('/processor');
+}
+
 const isDark = useDark();
 
 const toggleDark = useToggle(isDark);
@@ -125,6 +175,19 @@ const handleSelect = (key: string, keyPath: string[]) => {
     console.log(key, keyPath)
 }
 
+emitter.on('change_el_menu_item', (path) => {
+    if (path.indexOf('/dashboard') >= 0) {
+        activeIndex.value = '4'
+    } else if (path.indexOf('/pipeline') >= 0) {
+        activeIndex.value = '1'
+    } else if (path.indexOf('/runing') >= 0) {
+        activeIndex.value = '2'
+    } else if (path.indexOf('/processor') >= 0) {
+        activeIndex.value = '3'
+    } else {
+        activeIndex.value = '5'
+    }
+})
 
 const state = reactive({
     circleUrl:
@@ -196,66 +259,27 @@ const predefineColors = ref([
         border-right: none;
     }
 }
+
+
+.no-underline.is-active {
+    border-bottom: 0px !important;
+}
 </style>
 
-
-<!-- 
-
-<template>
-  <div id="app">
-    <header class="app-header">
-      <nav class="app-nav">
-      </nav>
-    </header>
-
-    <main class="app-main">
-      <router-view></router-view>
-    </main>
-  </div>
-</template>
-
-<script setup>
-// 这个文件通常不需要太多逻辑，除非你需要管理全局状态或监听路由变化
-</script>
-
 <style>
-/* 全局样式 */
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  margin: 0;
-  background-color: #f4f5f7;
-  color: #333;
+.el-color-picker__trigger {
+    border: 0px;
 }
 
-#app {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
+/* .el-color-picker__color-inner {
+    background-color: var(--el-color-info)!important;
+} */
 
-.app-header {
-  background-color: #fff;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding: 15px 30px;
+.el-color-picker .el-color-picker__icon {
+    align-items: center;
+    color: #ffffff;
+    display: none;
+    font-size: 12px;
+    justify-content: center;
 }
-
-.app-nav {
-  display: flex;
-  gap: 20px;
-}
-
-.nav-link {
-  text-decoration: none;
-  color: #555;
-  font-weight: bold;
-}
-
-.router-link-active {
-  color: #409eff; /* Element Plus 的主色调 */
-}
-
-.app-main {
-  flex-grow: 1;
-  padding: 20px;
-}
-</style> -->
+</style>

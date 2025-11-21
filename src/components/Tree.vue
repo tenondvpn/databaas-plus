@@ -6,16 +6,24 @@
         <div class="tree-container" ref="treeContainerRef">
             <el-tree-v2 ref="treeRef" :data="data" :props="props" :height="treeHeight" :filter-method="filterMethod"
                 :expand-on-click-node="false" @node-expand="handleNodeExpand" @node-click="handleNodeClick"
-                node-key="id">
+                :highlight-current="true" node-key="id">
 
                 <template #default="{ node }">
                     <div v-if="node.data.valid" class="custom-tree-node">
                         <div v-if="node.data.is_project" style="margin-top: 0px;">
-                            <h4>{{ node.label }}</h4>
+                            <el-icon v-if="!node.expanded" :size="18" style="padding:4px"
+                                color="var(--el-color-primary)">
+                                <Fold />
+                            </el-icon>
+                            <el-icon v-else :size="18" style="padding:4px" color="var(--el-color-info)">
+                                <Expand />
+                            </el-icon>
+                            <el-link style="margin-bottom: 10px;">{{ node.label }}</el-link>
+                            <!-- <h4>{{ node.label }}</h4> -->
                         </div>
                         <div v-else style="margin-top: 0px;">
                             <el-icon :size="18" style="padding:4px" color="var(--el-color-primary)">
-                                <TrendCharts />
+                                <SetUp />
                             </el-icon>
                             <el-link style="margin-bottom: 10px;">{{ node.label }}</el-link>
                         </div>
@@ -23,17 +31,22 @@
                             <span class="node-buttons">
                                 <el-button-group class="ml-4">
                                     <el-tooltip class="box-item" effect="dark" content="点击新建文件夹！">
-                                        <el-button type="info" size="small" :icon="Folder" />
+                                        <el-button plain type="info" size="small" :icon="Folder"
+                                            @click="callCreateProject(node)" />
                                     </el-tooltip>
                                     <el-tooltip class="box-item" effect="dark" content="点击新建流程！">
-                                        <el-button type="success" size="small" :icon="Plus"
-                                            @click="appendNode(node.data.id, null)" />
+                                        <el-button plain type="success" size="small" :icon="Plus"
+                                            @click="addPipelineClicked(node)" />
                                     </el-tooltip>
-                                    <el-tooltip class="box-item" effect="dark" content="编辑分类">
-                                        <el-button type="primary" size="small" :icon="Edit" />
+                                    <el-tooltip v-if="node.label != '我的项目'" class="box-item" effect="dark"
+                                        content="编辑分类">
+                                        <el-button plain type="primary" size="small" :icon="Edit"
+                                            @click="callUpdateProject(node)" />
                                     </el-tooltip>
-                                    <el-tooltip class="box-item" effect="dark" content="删除分类">
-                                        <el-button type="warning" size="small" :icon="Delete" />
+                                    <el-tooltip v-if="node.label != '我的项目'" class="box-item" effect="dark"
+                                        content="删除分类">
+                                        <el-button plain type="warning" size="small" :icon="Delete"
+                                            @click="deleteProject(node)" />
                                     </el-tooltip>
                                 </el-button-group>
                             </span>
@@ -42,10 +55,12 @@
                             <span class="node-buttons">
                                 <el-button-group class="ml-4">
                                     <el-tooltip class="box-item" effect="dark" content="点击编辑流程信息！">
-                                        <el-button type="primary" size="small" :icon="Edit" />
+                                        <el-button plain type="primary" @click="addPipelineClicked(node)" size="small"
+                                            :icon="Edit" />
                                     </el-tooltip>
                                     <el-tooltip class="box-item" effect="dark" content="点击删除流程！">
-                                        <el-button type="warning" size="small" :icon="Delete" />
+                                        <el-button plain type="warning" size="small" :icon="Delete"
+                                            @click="clickDeletePipeline(node)" />
                                     </el-tooltip>
                                 </el-button-group>
                             </span>
@@ -55,25 +70,228 @@
             </el-tree-v2>
         </div>
     </div>
+
+    <el-drawer v-model="createPipeline" :direction="drawer_direction" size="50%" :destroy-on-close="true">
+        <template #header>
+            <h4>{{ openPipelineModelTitle }}</h4>
+        </template>
+        <template #default>
+            <CreatePipelineVue :pipeline_info="selectedPipeline" />
+        </template>
+    </el-drawer>
+
+    <el-drawer v-model="createProject" :direction="drawer_direction" size="50%" :destroy-on-close="true">
+        <template #header>
+            <h4>创建项目文件夹</h4>
+        </template>
+        <template #default>
+            <CreateFolder :current_folder_info="selectedProject" />
+        </template>
+    </el-drawer>
+
+    <el-drawer v-model="updateProject" :direction="drawer_direction" size="50%" :destroy-on-close="true">
+        <template #header>
+            <h4>修改项目文件夹</h4>
+        </template>
+        <template #default>
+            <UpdateFolder :current_folder_info="selectedProject" />
+        </template>
+    </el-drawer>
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue';
-import { Plus, Edit, Delete, Search, Folder, TrendCharts } from '@element-plus/icons-vue'
-import { useCssVar } from '@vueuse/core'
-import type { TreeNodeData, TreeV2Instance } from 'element-plus'
-import { useDark, useToggle } from "@vueuse/core";
+import { ref, onMounted, onBeforeUnmount, h } from 'vue';
+import { Plus, Edit, Delete, Search, Folder, SetUp, Fold, Expand } from '@element-plus/icons-vue'
+import type { TreeNodeData } from 'element-plus'
+import { useDark } from "@vueuse/core";
 import axios from 'axios';
-import { Label } from '@antv/g6';
-import { isLeaf } from 'element-plus/es/utils/index.mjs';
-import { resolve } from '@antv/x6/lib/registry/node-anchor/util';
 import qs from 'qs';
 
 import emitter from './EventBus.ts';
+import { DrawerProps } from 'element-plus';
+import CreatePipelineVue from './CreatePipeline.vue'
+import CreateFolder from './CreateFolder.vue'
+import UpdateFolder from './UpdateFolder.vue'
+import { ElMessageBox } from 'element-plus';
+import { ElMessage } from 'element-plus';
 
-
+const createPipeline = ref(false)
+const drawer_direction = ref<DrawerProps['direction']>('rtl')
+const treeContainerRef = ref(null);
+const treeHeight = ref(0);
+let resizeObserver = null;
+const query = ref('')
+const treeRef = ref()
+const project_path = ref('我的项目')
+const project_id = ref('1')
+const openPipelineModelTitle = ref("创建流程")
+const pipeline_detail = ref({})
+const showed_init_expand = ref(false)
+const selectedPipelineValue = {
+    "id": "",
+    "name": "",
+    "owner_id": 1,
+    "ct_time": "",
+    "update_time": "",
+    "enable": 0,
+    "type": 0,
+    "email_to": "",
+    "description": "",
+    "sms_to": "",
+    "tag": "",
+    "life_cycle": "",
+    "monitor_way": 0,
+    "private": 1,
+    "project_id": 1,
+    "project_name": "",
+    "principal_name_list": "",
+    "principal_id_list": "",
+    "is_super": true,
+    "user_id": 1
+}
+const selectedPipeline = ref(structuredClone(selectedPipelineValue))
+const selectedProject = ref({})
+const createProject = ref(false)
+const updateProject = ref(false)
 
 const isDark = useDark();
+
+emitter.on("success_create_pipeline", (payload) => {
+    appendNode(payload["pid"], payload)
+    createPipeline.value = false;
+});
+
+emitter.on('create_folder', (data) => {
+    axios
+        .post('/processor/add_new_project/', qs.stringify({
+            'project_name': data.name,
+            'description': '',
+            'parent_id': data.cur_id,
+        })).then(response => {
+            if (response.data.status != 0) {
+                ElMessage({
+                    type: 'error',
+                    message: '创建项目文件夹失败：' + response.data.msg,
+                })
+            } else {
+                createProject.value = false
+
+                data["id"] = response.data.id
+                data["text"] = data.name
+                data["is_project"] = true
+                data["pipe_id"] = 0
+                var pid = data["cur_id"]
+                if (pid == 0) {
+                    pid = -1
+                }
+                if (data['type'] == 0) {
+                    // 子目录
+                    appendNode(data["selected_id"], data)
+                } else {
+                    // 平级目录
+                    appendNode(pid, data)
+                }
+                ElMessage({
+                    type: 'success',
+                    message: '创建项目文件夹成功！',
+                })
+            }
+        })
+        .catch(error => {
+            ElMessage({
+                type: 'error',
+                message: '创建项目文件夹失败：' + error,
+            })
+        })
+})
+
+emitter.on('update_folder', (node_data) => {
+    axios
+        .post('/pipeline/update_project/', qs.stringify({
+            'project_name': node_data.name,
+            'description': '',
+            'id': node_data.cur_id,
+        })).then(response => {
+            if (response.data.status != 0) {
+                ElMessage({
+                    type: 'error',
+                    message: '修改项目文件夹失败：' + response.data.msg,
+                })
+            } else {
+                updateProject.value = false
+
+                const node = treeRef.value.getNode(node_data.cur_id);
+                if (node) {
+                    console.log("upate project name: ", node, node.label)
+                    node.label = node_data.name;
+                    var tmp_node = findNode(node_data.cur_id, data.value)
+                    tmp_node.label = node_data.name
+                    console.log("upate project name: ", node, node.label)
+                    data.value = [...data.value]
+                }
+
+                ElMessage({
+                    type: 'success',
+                    message: '修改项目文件夹成功！',
+                })
+            }
+        })
+        .catch(error => {
+            ElMessage({
+                type: 'error',
+                message: '修改项目文件夹失败：' + error,
+            })
+        })
+})
+
+emitter.on("success_update_pipeline", (payload) => {
+    createPipeline.value = false;
+});
+
+emitter.on('home_view_click_create_pipeline', (payload) => {
+    selectedPipeline.value = structuredClone(selectedPipelineValue)
+    selectedPipeline.value.project_id = payload
+    createPipeline.value = true;
+});
+
+emitter.on("graph_call_delete_pipeline", (key) => {
+    // var node = findNode(key, data.value);
+    const node = treeRef.value.getNode(key)
+    console.log(node)
+    clickDeletePipeline(node)
+});
+
+emitter.on('show_graph_called', (data) => {
+    handleNodeClick({ "id": data }, null)
+})
+
+emitter.on('click_show_pipeline', (key) => {
+    openPipelineModelTitle.value = "修改流程"
+    axios
+        .post('/pipeline/get_pipeline_detail/', qs.stringify({
+            'pipe_id': key.split("-")[1],
+        }))
+        .then(response => {
+            selectedPipeline.value = response.data
+            if (response.data.email_to != "") {
+                selectedPipeline.value.monitor_way |= 1
+            }
+
+            if (response.data.sms_to != "") {
+                selectedPipeline.value.monitor_way |= 2
+            }
+
+            const str_id = "" + key;
+
+            console.log(str_id, key, str_id.split("-").length)
+            project_id.value = str_id
+            createPipeline.value = true;
+        })
+        .catch(error => {
+            console.log(error)
+            emitter.emit('update_graph', "-1");
+        })
+})
 
 interface Tree {
     id: string
@@ -93,9 +311,90 @@ const props = {
 const data = ref<Tree[]>([
 ])
 
+const callUpdateProject = (node) => {
+    var path = node.label
+    var parent_id = 0
+    if (node.parent) {
+        path = node.parent.label + "/" + path
+        parent_id = node.parent.key
+    }
+
+    selectedProject.value = {
+        "path": path,
+        "id": node.data.id,
+        "parent_id": parent_id,
+    }
+    updateProject.value = true
+}
+
+const deleteProject = (node) => {
+    ElMessageBox({
+        title: '删除项目文件夹',
+        message: h('p', null, [
+            h('span', null, '确定要删除项目文件夹吗? 项目文件夹名： '),
+            h('i', { style: 'color: red' }, node.label),
+        ]),
+        showCancelButton: true,
+        confirmButtonText: '确认',
+        cancelButtonText: '取消',
+        beforeClose: (action, instance, done) => {
+            if (action === 'confirm') {
+                instance.confirmButtonLoading = true
+                instance.confirmButtonText = '正在删除...'
+                axios
+                    .post('/processor/delete_project/', qs.stringify({
+                        'project_id': node.data.id,
+                    }))
+                    .then(response => {
+                        if (response.data.status != 0) {
+                            ElMessage({
+                                type: 'danger',
+                                message: "项目文件夹删除失败：" + response.data.msg,
+                            })
+                        } else {
+                            ElMessage({
+                                type: 'success',
+                                message: "项目文件夹删除成功！",
+                            })
+                            handleDelete(node)
+                        }
+
+                        done()
+                        instance.confirmButtonLoading = false
+                    })
+                    .catch(error => {
+                        ElMessage({
+                            type: 'danger',
+                            message: "项目文件夹删除失败：" + error,
+                        })
+                    })
+            } else {
+                done()
+            }
+        },
+    }).then((action) => {
+    })
+}
+
+const callCreateProject = (node) => {
+    var path = node.label
+    var parent_id = 0
+    if (node.parent) {
+        path = node.parent.label + "/" + path
+        parent_id = node.parent.key
+    }
+
+    selectedProject.value = {
+        "path": path,
+        "id": node.data.id,
+        "parent_id": parent_id,
+    }
+    createProject.value = true
+}
+
 const handleNodeExpand = (nodeData, nodeInstance) => {
     axios
-        .get('http://82.156.224.174:7001/pipeline/get_project_tree_async/', {
+        .get('/pipeline/get_project_tree_async/', {
             params: {
                 "id": nodeData.id
             }
@@ -110,48 +409,198 @@ const handleNodeExpand = (nodeData, nodeInstance) => {
             for (const item of response.data) {
                 appendNode(nodeData.id, item);
             }
+
+
+
         })
         .catch(error => console.log(error))
 }
 
-const handleNodeClick = (nodeData, nodeInstance) => {
-    const str_id = "" + nodeData.id;
-    console.log(str_id, str_id.split("-")[1], str_id.split("-").length)
-    if (str_id.split("-").length != 2) {
-        emitter.emit('update_graph', "-1");
-        emitter.emit('show_update_graph', "-1");
+const addPipelineClicked = (nodeData) => {
+    openPipelineModelTitle.value = "创建流程"
+    selectedPipeline.value = structuredClone(selectedPipelineValue);
+    console.log("ttttt:", nodeData.key)
+    var str_key = "" + nodeData.key
+    if (str_key.split("-").length != 2) {
+        selectedPipeline.value.project_id = nodeData.key
+        createPipeline.value = true;
+        project_path.value = nodeData.label
+        var parent_node = nodeData.parent
+        while (parent_node) {
+            project_path.value = parent_node.label + "/" + project_path.value
+            parent_node = parent_node.parent
+        }
+
+        console.log(project_path.value)
         return;
     }
 
-    // axios
-    //     .post('http://82.156.224.174:7001/pipeline/get_pipeline_detail/', qs.stringify({
-    //         'pipe_id': nodeData.id.split("-")[1],
-    //     }))
-    //     .then(response => {
-    //     })
-    //     .catch(error => {
-    //         console.log(error)
-    //         emitter.emit('update_graph', "-1");
-    //     })
-
-    console.log("11111:", str_id, str_id.split("-")[1], str_id.split("-").length)
+    openPipelineModelTitle.value = "修改流程"
     axios
-        .post('http://82.156.224.174:7001/pipeline/get_tasks/', qs.stringify({
-            'pipeline_id': str_id.split("-")[1],
+        .post('/pipeline/get_pipeline_detail/', qs.stringify({
+            'pipe_id': nodeData.key.split("-")[1],
         }))
         .then(response => {
-            // 正确: 载荷类型与定义匹配
-            emitter.emit('show_update_graph', "1");
-            emitter.emit('update_graph', response.data);
+            selectedPipeline.value = response.data
+            if (response.data.email_to != "") {
+                selectedPipeline.value.monitor_way |= 1
+            }
+
+            if (response.data.sms_to != "") {
+                selectedPipeline.value.monitor_way |= 2
+            }
+
+            createPipeline.value = true;
+            const str_id = "" + nodeData.key;
+
+            console.log(str_id, nodeData, str_id.split("-").length)
+            project_id.value = str_id
         })
         .catch(error => {
             console.log(error)
             emitter.emit('update_graph', "-1");
-            emitter.emit('show_update_graph', "-1");
+        })
+
+}
+
+const handleDelete = (node) => {
+    var parentNode = null;
+    if (node.parent) {
+        console.log("now delete node: ", node.parent.key)
+        parentNode = findNode(node.parent.key, data.value)
+    }
+
+    if (parentNode) {
+        // 从父节点的 children 数组中移除该节点
+        const index = parentNode.children.findIndex(child => child.id === node.key);
+        console.log("found parent now delete node: ", index)
+        if (index !== -1) {
+            parentNode.children.splice(index, 1);
+        }
+    } else {
+        // 如果没有父节点，说明是根节点
+        // 根节点的删除逻辑
+        const index = data.value.findIndex(item => item.id === node.key);
+        console.log("not found parent now delete node: ", index)
+        if (index !== -1) {
+            data.value.splice(index, 1);
+        }
+    }
+
+    data.value = [...data.value]
+    console.log("delete key: ", node.key)
+    var node_key = "" + node.key
+    if (node_key.split('-').length == 2) {
+        emitter.emit('success_delete_pipeline', node_key)
+    }
+};
+
+const clickDeletePipeline = (nodeData) => {
+    ElMessageBox({
+        title: '删除流程',
+        message: h('p', null, [
+            h('span', null, '确定要删除流程吗? 流程名： '),
+            h('i', { style: 'color: red' }, nodeData.label),
+        ]),
+        showCancelButton: true,
+        confirmButtonText: '确认',
+        cancelButtonText: '取消',
+        beforeClose: (action, instance, done) => {
+            if (action === 'confirm') {
+                instance.confirmButtonLoading = true
+                instance.confirmButtonText = '正在删除...'
+                ''
+                axios
+                    .post('/pipeline/delete/' + nodeData.key.split('-')[1] + '/', {
+                    })
+                    .then(response => {
+                        console.log('success delete pipeline.')
+                        handleDelete(nodeData)
+                        done()
+                        instance.confirmButtonLoading = false
+                    })
+                    .catch(error => {
+                        done()
+                        ElMessage({
+                            type: 'danger',
+                            message: "流程删除失败：" + error,
+                        })
+                    })
+            } else {
+                done()
+            }
+        },
+    }).then((action) => {
+        ElMessage({
+            type: 'success',
+            message: "流程删除成功！",
+        })
+    })
+}
+
+const handleNodeClick = (nodeData, nodeInstance) => {
+    const str_id = "" + nodeData.id;
+    selectedPipeline.value = structuredClone(selectedPipelineValue)
+    console.log(str_id, str_id.split("-")[1], str_id.split("-").length)
+    project_id.value = str_id
+    if (str_id.split("-").length != 2) {
+        project_path.value = "/" + nodeData.label
+        var parent_node = nodeInstance.parent
+        while (parent_node) {
+            project_path.value = "/" + parent_node.label + project_path.value
+            parent_node = parent_node.parent
+        }
+
+        emitter.emit('update_graph', { "tag": "-1", "project_path": project_path.value, 'project_id': nodeData.id });
+        emitter.emit('show_update_graph', { "tag": "-1", "project_path": project_path.value, 'project_id': nodeData.id });
+        console.log('update_graph node click 0', project_path.value, 'project_id', nodeData.id)
+        return;
+    }
+
+    axios
+        .post('/pipeline/get_pipeline_detail/', qs.stringify({
+            'pipe_id': nodeData.id.split("-")[1],
+        }))
+        .then(response => {
+            selectedPipeline.value = response.data
+            if (response.data.email_to != "") {
+                selectedPipeline.value.monitor_way |= 1
+            }
+
+            if (response.data.sms_to != "") {
+                selectedPipeline.value.monitor_way |= 2
+            }
+
+            console.log('get pipeline detail:', response.data)
+            console.log("11111:", str_id, str_id.split("-")[1], str_id.split("-").length)
+            pipeline_detail.value = response.data
+            var pipline_data = response.data
+            axios
+                .post('/pipeline/get_tasks/', qs.stringify({
+                    'pipeline_id': str_id.split("-")[1],
+                }))
+                .then(response => {
+                    // 正确: 载荷类型与定义匹配
+                    emitter.emit('show_update_graph', { "tag": "1", "project_path": project_path.value, "pipe_id": str_id });
+                    response.data['project_id'] = str_id.split("-")[0]
+                    response.data['pipeline_detail'] = pipline_data
+                    emitter.emit('update_graph', { "tag": "0", 'project_id': str_id.split("-")[0], "project_path": project_path.value, "data": response.data });
+                    console.log('update_graph get tasks 1', project_path.value, response.data, 'project_id', str_id.split("-")[0])
+                })
+                .catch(error => {
+                    console.log(error)
+                    emitter.emit('update_graph', { "tag": "-1", 'project_id': str_id.split("-")[0], "project_path": project_path.value });
+                    emitter.emit('show_update_graph', { "tag": "-1", "project_path": project_path.value, 'project_id': str_id.split("-")[0] });
+                    console.log('update_graph get tasks error 2', project_path.value, 'project_id', str_id.split("-")[0])
+                })
+        })
+        .catch(error => {
+            console.log(error)
+            emitter.emit('update_graph', "-1");
         })
 }
 
-const GetProjectsAndPipelines = () => {
+const GetProjectsAndPipelines = async () => {
     // axios.interceptors.request.use(config => {
     //     const token = localStorage.getItem('access_token')
     //     if (token) {
@@ -159,8 +608,8 @@ const GetProjectsAndPipelines = () => {
     //     }
     //     return config
     // })
-    axios
-        .get('http://82.156.224.174:7001/pipeline/get_project_tree_async/', {
+    await axios
+        .get('/pipeline/get_project_tree_async/', {
             params: {
             }
         })
@@ -170,14 +619,16 @@ const GetProjectsAndPipelines = () => {
             for (const item of response.data) {
                 appendNode(-1, item);
             }
+
+            console.log('treeRef.value.getNode():', treeRef.value.getNode('1'))
+            handleNodeExpand({ "id": 1 }, null)
+
         })
         .catch(error => console.log(error))
+
+            treeRef.value.expandNode(treeRef.value.getNode(1))
+    
 }
-
-const treeContainerRef = ref(null);
-const treeHeight = ref(0);
-
-let resizeObserver = null;
 
 onMounted(() => {
     if (treeContainerRef.value) {
@@ -206,21 +657,16 @@ onBeforeUnmount(() => {
 });
 
 
-const query = ref('')
-const treeRef = ref()
 const onQueryChanged = (query: string) => {
     treeRef.value!.filter(query)
 }
 const filterMethod = (query: string, node: TreeNodeData) =>
     node.label!.includes(query)
 
-
-let id = 1000
-
 const findNode = (id, nodes) => {
     for (let i = 0; i < nodes.length; i++) {
         const node = nodes[i]
-        if (node.id === id) {
+        if (("" + node.id) === ("" + id)) {
             return node
         }
         if (node.children) {
@@ -235,12 +681,8 @@ const findNode = (id, nodes) => {
 
 // 新增节点的方法
 const appendNode = (parentId, item) => {
-    //     console.log(item["id"])
-    // console.log(item["text"])
-    // console.log(item["state"])
-    // console.log(item["is_project"])
     if (item == null) {
-        item = { "id": id++, "text": "test", is_project: false }
+        return;
     }
 
     const newChild = {
@@ -249,6 +691,7 @@ const appendNode = (parentId, item) => {
         is_project: item["is_project"],
         children: [],
         valid: true,
+        pipe_id: item["pipe_id"],
     }
 
     if (item["is_project"]) {
@@ -277,12 +720,12 @@ const appendNode = (parentId, item) => {
             }
 
             parentNode.children.push(newChild)
-            // const node = treeRef.value.getNode(parentNode.id)
-            // treeRef.value.expandNode(node);
             data.value = [...data.value]
+            treeRef.value.setCurrentKey(newChild.id);
         }
     }
 
+    emitter.emit('update_graph', { "tag": "0", 'project_id': parentId, "project_path": project_path.value, "data": newChild });
 }
 
 </script>

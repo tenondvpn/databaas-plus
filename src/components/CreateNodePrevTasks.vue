@@ -13,7 +13,8 @@
                 </el-select>
                 <el-select filterable v-model="item.task" value-key="id" placeholder="请选择任务"
                     style="width: 220px;margin-left: 2px;margin-right: 13px;">
-                    <el-option v-for="titem in task_options[index]" :key="titem.id" :label="titem.name" :value="titem" />
+                    <el-option v-for="titem in task_options[index]" :key="titem.id" :label="titem.name"
+                        :value="titem" />
                 </el-select>
             </el-row>
             <!-- <el-input v-model="item.value" placeholder="请输入内容" class="input-item" /> -->
@@ -63,6 +64,8 @@ const removeItem = (item) => {
 // 增加表单项
 const addItem = () => {
     dynamicForm.items.push({
+        pipeline_id: 0,
+        task_id: 0,
         pipeline: '',
         task: '',
     });
@@ -74,7 +77,7 @@ onMounted(() => {
 
 const UpdatePipelines = () => {
     axios
-        .post('http://82.156.224.174:7001/pipeline/get_pipelines/', {
+        .post('/pipeline/get_pipelines/', {
         })
         .then(response => {
             pipeline_options.value = []
@@ -89,19 +92,6 @@ const UpdatePipelines = () => {
         })
         .catch(error => console.log(error))
 }
-// 提交表单
-const submitForm = async (formEl) => {
-    if (!formEl) return;
-    await formEl.validate((valid, fields) => {
-        if (valid) {
-            console.log('提交的数据:', dynamicForm.items);
-            ElMessage.success('表单校验通过，可以提交！');
-        } else {
-            console.log('校验失败:', fields);
-            ElMessage.error('表单校验失败，请检查!');
-        }
-    });
-};
 
 type PipelineOption = {
     id: number
@@ -128,7 +118,7 @@ const handleChange = (val, val1) => {
     console.log(val, val1)
     dynamicForm.items[val1].task = ""
     axios
-        .post('http://82.156.224.174:7001/pipeline/get_tasks/', qs.stringify({
+        .post('/pipeline/get_tasks/', qs.stringify({
             'pipeline_id': val.id,
         }))
         .then(response => {
@@ -153,9 +143,26 @@ const ResetForm = () => {
     dynamicForm.items = []
 }
 
+const AddPrevTasks = (prev_tasks) => {
+    var idx = 0
+    for (const key in prev_tasks) {
+        console.log("prev task: ", key, prev_tasks[key])
+        dynamicForm.items.push({
+            pipeline_id: prev_tasks[key].pl_id,
+            task_id: prev_tasks[key].id,
+            pipeline: prev_tasks[key].pipeline_name,
+            task: prev_tasks[key].id,
+        });
+        handleChange({id: prev_tasks[key].pl_id}, idx)
+        dynamicForm.items[idx].task = prev_tasks[key].name
+        ++idx
+    }
+}
+
 defineExpose({
     GetPrevTasks,
     ResetForm,
+    AddPrevTasks,
 });
 
 </script>

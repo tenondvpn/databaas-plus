@@ -11,10 +11,8 @@ const {indexConfig}=storeToRefs(settingStore)
 const init = () => {
   settingStore.initSetting();
   isScaleRadio.value = settingStore.isScale;
-
   leftBottomRadio.value=indexConfig.value.leftBottomSwiper
   rightBottomRadio.value=indexConfig.value.rightBottomSwiper
-
 };
 init();
 const handleClose = () => {};

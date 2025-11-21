@@ -2,7 +2,6 @@
 import Header from './Header.vue';
 import Tree from './Tree.vue';
 import FlowChart from './FlowChart.vue';
-import Carousel from './Carousel.vue';
 
 export default {
     name: 'App',
@@ -10,11 +9,8 @@ export default {
         Header,
         Tree,
         FlowChart,
-        Carousel,
     },
 };
-
-
 </script>
 
 

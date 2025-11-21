@@ -7,7 +7,7 @@
                 trigger: 'blur',
             }">
 
-            <el-row :gutter="37">
+            <el-row v-if="!show_description" :gutter="37">
                 <el-col :span="6" style="padding: 0px; width: 297px; padding-left: 18px;">
                     <el-input v-model="item.key" aria-label="参数名" placeholder="参数名" />
                 </el-col>
@@ -15,6 +15,21 @@
                 </el-col>
                 <el-col :span="16" style="padding: 0px;">
                     <el-input v-model="item.value" aria-label="参数值" placeholder="参数值" />
+                </el-col>
+            </el-row>
+            <el-row v-else :gutter="37">
+                <el-col :span="6" style="padding: 0px; width: 297px; padding-left: 18px;">
+                    <el-input v-model="item.key" aria-label="参数名" placeholder="参数名" />
+                </el-col>
+                <el-col :span="1" style="padding: 0px;margin-left:10px;margin-right:-4px"> :
+                </el-col>
+                <el-col :span="6" style="padding: 0px;">
+                    <el-input v-model="item.value" aria-label="参数值" placeholder="参数值" />
+                </el-col>
+                <el-col :span="1" style="padding: 0px;margin-left:10px;margin-right:-4px"> #
+                </el-col>
+                <el-col :span="8" style="padding: 0px;">
+                    <el-input v-model="item.desc" aria-label="参数描述" placeholder="参数描述" />
                 </el-col>
             </el-row>
             <el-button size="small" type="primary" style="margin-left: 20px;" :icon="Minus" circle @click.prevent="removeItem(item)" class="remove-btn" />
@@ -32,13 +47,23 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue';
+import { reactive, ref, onMounted, defineProps } from 'vue';
 import { Minus, Plus } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
+import { descriptionItemProps } from 'element-plus';
+
+const props = defineProps({
+    show_description: Boolean,
+});
 
 const formRef = ref(null);
+const show_description = ref(false)
 
-// 核心数据模型：一个包含动态表单项的数组
+
+onMounted(() => {
+    show_description.value = props.show_description
+});
+
 const dynamicForm = reactive({
     items: [
         // { pipeline: '' }, // 每个对象代表一个动态项的数据
@@ -46,12 +71,9 @@ const dynamicForm = reactive({
     ],
 });
 
-// 表单校验规则（可选）
 const rules = reactive({
-    // 这里可以定义其他静态表单项的规则
 });
 
-// 移除表单项
 const removeItem = (item) => {
     const index = dynamicForm.items.indexOf(item);
     if (index !== -1) {
@@ -59,11 +81,11 @@ const removeItem = (item) => {
     }
 };
 
-// 增加表单项
 const addItem = () => {
     dynamicForm.items.push({
-        pipeline: '',
-        task: '',
+        key: '',
+        value: '',
+        desc: '',
     });
 };
 
@@ -75,16 +97,25 @@ const ResetForm = () => {
     dynamicForm.items = []
 }
 
+const AddConfig = (key, value, desc="") => {
+    dynamicForm.items.push({
+        key: key,
+        value: value,
+        desc: desc,
+    });
+}
+
 defineExpose({
     GetConfigs,
     ResetForm,
+    AddConfig,
 });
 
 </script>
 
 <style scoped>
 .dynamic-form-container {
-    max-width: 600px;
+    max-width: 100%;
     /* margin: 50px auto; */
 }
 

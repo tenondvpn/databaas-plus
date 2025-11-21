@@ -2,7 +2,7 @@
   <div class="page-container">
     <h1>欢迎来到首页！</h1>
     <p>这是一个使用 Element Plus 和 Vue Router 构建的单页应用示例。</p>
-    <el-button type="primary" @click="goToAbout">
+    <el-button plain type="primary" @click="goToAbout">
       前往关于页面
     </el-button>
   </div>

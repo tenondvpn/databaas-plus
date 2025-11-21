@@ -20,7 +20,7 @@ const power_options = ref([])
 
 const ChangcePowerNodes = (type) => {
     axios
-        .get('http://82.156.224.174:7001/pipeline/get_power_nodes/', {
+        .get('/pipeline/get_power_nodes/', {
             params: {
                 "type": type
             }

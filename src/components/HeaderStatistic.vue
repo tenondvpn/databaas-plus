@@ -293,7 +293,7 @@ import {
 }
 
 .red {
-    color: var(--el-color-error);
+    color: var(--el-color-danger);
 }
 
 .el-row {

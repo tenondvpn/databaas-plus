@@ -16,7 +16,7 @@
       </div>
       <button type="submit">注册</button>
     </form>
-        <el-button @click="toLogin">
+        <el-button plain @click="toLogin">
       登录
     </el-button>
     <p v-if="message">{{ message }}</p>
@@ -40,7 +40,7 @@ const handleRegister = async () => {
   }
 
   try {
-    const response = await axios.post('http://82.156.224.174:7001/rest_register/', {
+    const response = await axios.post('/rest_register/', {
       username: username.value,
       password: password.value,
     });

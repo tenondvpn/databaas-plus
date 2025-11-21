@@ -1,40 +1,51 @@
-<script setup lang="ts">
-import { ref } from "vue";
-import { RouterView } from "vue-router";
-import ScaleScreen from "./scale-screen";
-import Headers from "./header.vue";
-import Setting from "./setting.vue";
-import { useSettingStore } from "../../stores/index";
-import { storeToRefs } from "pinia";
-import MessageContent from "./Plugins/MessageContent";
-import Dashboard from "./views/Dashboard.vue";
-
-const settingStore = useSettingStore();
-const { isScale } = storeToRefs(settingStore);
-const wrapperStyle = {};
-</script>
-
 <template>
-    <scale-screen width="1920" height="1080" :delay="500" :fullScreen="false" :boxStyle="{
-        background: '#03050C',
-        overflow: isScale ? 'hidden' : 'auto',
-    }" :wrapperStyle="wrapperStyle" :autoScale="isScale">
-        <div class="content_wrap">
-            <Headers />
-            <Dashboard />
-            <MessageContent />
-        </div>
-    </scale-screen>
-    <Setting />
+  <el-empty style="margin-top: 100px;">
+    <el-text class="mx-1" type="primary">当前项目路径：{{ project_path }}</el-text>
+    <el-divider border-style="dashed" />
+    <el-button v-if="is_processor" size="large" type="primary" :icon="Plus" @click="crate_pipeline">创建插件</el-button>
+    <el-button v-else size="large" type="primary" :icon="Plus" @click="crate_pipeline">创建流程</el-button>
+  </el-empty>
 </template>
-<style lang="scss" scoped>
-.content_wrap {
-    width: 100%;
-    height: 100%;
-    padding: 16px 16px 16px 16px;
-    box-sizing: border-box;
-    background-image: url("@/assets/img/pageBg.png");
-    background-size: cover;
-    background-position: center center;
+
+<script setup lang="ts">
+import { Plus } from '@element-plus/icons-vue'
+import emitter from './EventBus';
+import { onMounted, ref } from 'vue';
+
+const props = defineProps({
+    project_path: String,
+    project_id: String,
+    is_processor: Boolean,
+});
+
+const is_processor = ref(false)
+const project_id = ref(-1)
+const project_path = ref('')
+
+const crate_pipeline = () => {
+    if (!is_processor.value) {
+        console.log("props.project_id: ", props.project_id)
+        emitter.emit("home_view_click_create_pipeline", props.project_id)
+    } else {
+        emitter.emit("home_view_click_create_processor", {
+            "processor": {
+                "project_id": project_id.value,
+                "name": project_path.value,
+            }
+        })
+    }
 }
-</style>
+
+emitter.on('upate_processor_to_show_detail', (payload) => {
+    project_id.value = payload['project_id']
+    project_path.value = payload['project_path']
+});
+
+onMounted(() => {
+    is_processor.value = props.is_processor
+    project_id.value = props.project_id
+    project_path.value = props.project_path
+    console.log("home view coming: ", props.project_id, props.project_path)
+});
+
+</script>

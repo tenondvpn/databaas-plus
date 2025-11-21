@@ -2,7 +2,7 @@
   <div class="page-container">
     <h1>关于我们</h1>
     <p>这是一个关于本项目的介绍页面。</p>
-    <el-button @click="goBack">
+    <el-button plain @click="goBack">
       返回首页
     </el-button>
   </div>
