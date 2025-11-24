@@ -160,13 +160,12 @@ export default {
                     email: registerForm.email,
                     phone: registerForm.phone,
                 });
-                message.value = response.data.message;
                 // 注册成功后可以进行页面跳转
-                ElMessage({title: "注册成功", type: "success", message:  "欢迎： " + loginForm.account})
+                ElMessage({title: "注册成功", type: "success", message:  "欢迎： " + registerForm.username})
                 ElNotification({ title: "注册成功", message: "请登录", type: "success", position: 'top-left',})
                 router.push("/login")
             } catch (error) {
-                ElMessage({title: "注册失败：", type: "danger", message:  (error.response?.data?.msg || '网络错误')})
+                ElMessage({title: "注册失败：", type: "danger", message:  error})
             }
         };
         return {
@@ -179,7 +178,7 @@ export default {
             onLoginClick,
             onGetCodeClick,
             onTogglePanelStatus,
-            appName: computed(() => "分布式智能计算实验平台"),
+            appName: computed(() => "智能计算平台"),
             device: computed(() => "store.state.app.device"),
         };
     },

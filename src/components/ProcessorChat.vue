@@ -20,14 +20,13 @@ export default {
     },
 };
 
-
 </script>
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, defineProps } from 'vue';
 import emitter from './EventBus';
 
-const project_path_str = ref('我的项目')
+const project_path_str = ref('我创建的')
 const choosed_processor = ref(false)
 const choosed_processor_id = ref('')
 const dynamicMargin = ref(10000)
@@ -37,6 +36,7 @@ const props = defineProps({
 });
 
 onMounted(() => {
+    emitterOn();
     if (props.processor_info && props.processor_info.proc_detail) {
         choosed_processor.value = true
         dynamicMargin.value = 0;
@@ -44,27 +44,40 @@ onMounted(() => {
     }
 });
 
-// 正确接收事件
-emitter.on('upate_processor_to_show_detail', (payload) => {
-    update_processor(payload)
-});
+onBeforeUnmount(() => {
+    emitterOff();
+})
+
+const emitterOff = () => {
+    emitter.off('upate_processor_to_show_detail', null);
+    emitter.off('delete_processor_success', null);
+    emitter.off('create_processor_success', null);
+}
+
+const emitterOn = () => {
+    // 正确接收事件
+    emitter.on('upate_processor_to_show_detail', (payload) => {
+        console.log("00002 upate_processor_to_show_detail coming.")
+        update_processor(payload)
+    });
 
 
-emitter.on('delete_processor_success', (payload) => {
-    console.log("delete_processor_success: ", payload, choosed_processor_id.value)
-    if (payload == choosed_processor_id.value) {
-        choosed_processor.value = false;
-        dynamicMargin.value = 10000;
-    }
-});
+    emitter.on('delete_processor_success', (payload) => {
+        console.log("delete_processor_success: ", payload, choosed_processor_id.value)
+        if (payload == choosed_processor_id.value) {
+            choosed_processor.value = false;
+            dynamicMargin.value = 10000;
+        }
+    });
 
-emitter.on("create_processor_success", (payload) => {
-    choosed_processor.value = true;
-    dynamicMargin.value = 0;
-    choosed_processor_id.value = payload["id"]
-    console.log("create processor: ", choosed_processor_id.value, payload)
-    update_processor(payload)
-});
+    emitter.on("create_processor_success", (payload) => {
+        choosed_processor.value = true;
+        dynamicMargin.value = 0;
+        choosed_processor_id.value = payload["id"]
+        console.log("create processor: ", choosed_processor_id.value, payload)
+        update_processor(payload)
+    });
+}
 
 const update_processor = (data) => {
     if (data["tag"] == "-1") {

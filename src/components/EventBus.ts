@@ -50,6 +50,9 @@ type EventTypes = {
   'call_function_solidity_code': {},
   'call_function_solidity_code_res': {},
   'set_solidity_private_key': {},
+  'theme_changed': {},
+  'change_search_status': {},
+  'change_search_owner': {},
 };
 
 const emitter = mitt<EventTypes>();

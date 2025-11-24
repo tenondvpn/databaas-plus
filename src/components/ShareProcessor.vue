@@ -9,7 +9,7 @@
         <el-divider border-style="dashed" />
         <el-form-item>
             <el-button plain v-if="isPrivate == 1" type="primary" @click="submitForm(ruleFormRef)" :icon="Edit">
-                共享插件
+                共享模板任务
             </el-button>
             <el-button plain v-else type="primary" @click="submitForm(ruleFormRef)" :icon="Edit">
                 取消共享
@@ -66,7 +66,7 @@ const procType = ref(1)
 const isPrivate = ref(1)
 const showTree = ref(false)
 const ruleForm = reactive<RuleForm>({
-    project: "标准库",
+    project: "公共任务",
 })
 
 onMounted(() => {
@@ -77,7 +77,7 @@ onMounted(() => {
     isPrivate.value = props.is_private
     showTree.value = true
     if (isPrivate.value) {
-        ruleForm.project = "标准库"
+        ruleForm.project = "公共任务"
     } else {
         ruleForm.project = "我创建的"
     }
@@ -93,7 +93,7 @@ const submitForm = async (formEl: FormInstance | undefined) => {
                 project_id = -1
             }
             
-            if (ruleForm.project != "标准库" && ruleForm.project != "我创建的") {
+            if (ruleForm.project != "公共任务" && ruleForm.project != "我创建的") {
                 project_id = ruleForm.project
             }
 
@@ -105,10 +105,10 @@ const submitForm = async (formEl: FormInstance | undefined) => {
                 }))
                 .then(response => {
                     if (response.status != 200 || response.data.status != 0) {
-                        ElMessage.warning("共享插件失败：" + response.data.msg)
+                        ElMessage.warning("共享模板任务失败：" + response.data.msg)
                     } else {
                         console.log(response.data)
-                        ElMessage.success("共享插件成功！")
+                        ElMessage.success("共享模板任务成功！")
                         emitter.emit("share_processor_success", {
                             "id": processor_id.value,
                             "project_id": project_id,
@@ -119,7 +119,7 @@ const submitForm = async (formEl: FormInstance | undefined) => {
                     }
                 })
                 .catch(error => {
-                    ElMessage.error("共享插件失败：" + error)
+                    ElMessage.error("共享模板任务失败：" + error)
                     console.log(error)
                 })
         } else {

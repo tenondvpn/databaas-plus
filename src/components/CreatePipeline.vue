@@ -5,7 +5,7 @@
             <el-col :span="24">
                 <el-form-item prop="project" label="选择项目" required>
                     <el-tree-select v-model="ruleForm.project" :data="treeData"  check-strictly
-                        node-key="id" @change="choosed_project = true" />
+                        node-key="id"  />
                 </el-form-item>
             </el-col>
         </el-form-item>
@@ -138,7 +138,6 @@ const props = defineProps({
     pipeline_info: Map
 });
 
-const choosed_project = ref(false)
 const treeData = ref([
 ]);
 
@@ -258,6 +257,7 @@ const submitForm = async (formEl: FormInstance | undefined) => {
         "description": ruleForm.desc,
         "project_id": project_id,
         "tags": ruleForm.tags.toString(),
+        "type": 2,
     }
     console.log(params)
     if (!formEl) return
@@ -327,7 +327,7 @@ const getProjectTree = async () => {
     await axios
         .get('/pipeline/get_project_tree/', {
             params: {
-                "type": 0
+                "type": 2
             }
         })
         .then(response => {
@@ -390,13 +390,13 @@ const load = (node, resolve) => {
 
     if (node_id == undefined) {
         params = {
-            type: 0,
+            type: 1,
             get_pipe: 0,
         }
     } else {
         params = {
             id: node_id,
-            type: 0,
+            type: 2,
             get_pipe: 0,
         }
     }

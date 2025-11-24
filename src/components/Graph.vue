@@ -1,6 +1,6 @@
 <template>
     <div v-if="!show_history_graph">
-        <el-tooltip class="box-item" effect="dark" content="基于插件创建新的任务！">
+        <el-tooltip class="box-item" effect="dark" content="基于配置参数创建新的任务！">
             <el-button class="!ml-0" plain
                 @click="show_task_vue = true; update_task = false; clicked_task_info = {}; taskType = 1;" size=""
                 style="margin-top: 4px; margin-left: 4px; z-index:1051;position: fixed;" :icon="Plus" />
@@ -49,10 +49,10 @@
             <el-button type="success" class="!ml-0" plain @click="callOffline" size=""
                 style="margin-top: 4px; margin-left: 454px; z-index:1051;position: fixed;" :icon="VideoPlay" />
         </el-tooltip>
-        <el-tooltip class="box-item" effect="dark" content="通过AI自动生成用户需要的流程">
+        <!-- <el-tooltip class="box-item" effect="dark" content="通过AI自动生成用户需要的流程">
             <el-button class="!ml-0" plain @click="ai_generate = true" size=""
                 style="margin-top: 4px; margin-left: 504px; z-index:1051;position: fixed;" :icon="aiIcon" />
-        </el-tooltip>
+        </el-tooltip> -->
         <!-- <el-tooltip v-if="graph_locked" class="box-item" effect="dark" content="解锁，使画布可拖拽！">
             <el-button class="!ml-0" plain @click="show_task_vue = true" size=""
                 style="margin-top: 4px; margin-left: 404px; z-index:1051;position: fixed;" :icon="Lock" />
@@ -63,13 +63,12 @@
         </el-tooltip> -->
     </div>
     <div>
-    <el-scrollbar style="height: 90vh">
-
+    <el-scrollbar :style="`height: ${dynamicGraphHeight}px`">
         <div id="container" :class="{ containerDark: isDark, containerLight: !isDark }"
-            :style='{ "min-width": "10000px", "min-height": "5000px", "margin-top": "0px" }'>
+            :style='{ "min-width": "5000px", "min-height": "5000px", "margin-top": "0px" }'>
             <div id="stencil">
                 <div id="graph-container" class="x6-graph" tabindex="-1"
-                    style="width: 10000px; height: 5000px; z-index: 1000;">
+                    style="width: 5000px; height: 5000px; z-index: 1000;">
                 </div>
             </div>
         </div>
@@ -99,7 +98,7 @@
             <h4 v-else>修改任务</h4>
         </template>
         <template #default>
-            <CreateNode :pipeline_id="pipeline_id" :task_info="clicked_task_info" :task_type="taskType" />
+            <CreateNode :pipeline_id="pipeline_id" :task_info="clicked_task_info" :task_type="taskType", :update_task="update_task" />
         </template>
     </el-drawer>
     <el-drawer v-model="run_tasks" :direction="drawer_direction" size="50%" :destroy-on-close="true">
@@ -110,7 +109,7 @@
             <RunPipeline :all_tasks="allTasks" />
         </template>
     </el-drawer>
-    <el-drawer class="custom-drawer" v-model="show_task_status" :direction="drawer_direction" size="100%"
+    <el-drawer class="custom-drawer" v-model="show_task_status" :direction="drawer_direction" size="100%" body-class="my-card-body"
         :destroy-on-close="true">
         <template #header>
             <h4 style="width: 60px;">执行状态</h4>
@@ -135,7 +134,7 @@
         </template>
         <template #default>
             <TaskStatusList :table_margin_top="0" :auto_refresh="auto_refresh_task" :pipeline_name="pipeline_name"
-                :task_name="task_name" :page_size="pageSize2" />
+                :task_name="task_name" :page_size="pageSize2" :is_graph_task_list="true" />
         </template>
     </el-drawer>
     <el-drawer v-model="export_graph" :direction="drawer_direction" size="30%" :destroy-on-close="true">
@@ -222,6 +221,8 @@ import sqlIcon from './sqlIcon.vue';
 import { Refresh } from '@element-plus/icons-vue'
 import { Export } from '@antv/x6-plugin-export';
 import { DataUri } from '@antv/x6'
+import { useEventListener } from '@vueuse/core'
+
 const auto_refresh_task = ref(false)
 
 const show_task_vue = ref(false)
@@ -242,7 +243,7 @@ const run_tasks = ref(false)
 const allTasks = ref({})
 const show_task_status = ref(false)
 const choosed_task = ref(false)
-const pageSize2 = ref(10)
+const pageSize2 = ref(50)
 const currentPage2 = ref(1)
 const currentTotalSize = ref(0)
 const show_history_graph = ref(false)
@@ -262,8 +263,126 @@ const ai_timer = ref(null)
 const ai_count = ref(0)
 const ai_nodes = ref([])
 const ai_edges = ref([])
+const dynamicGraphHeight = ref(1000)
+
+const emitterOn = () => {
+    // 正确接收事件
+    emitter.on('update_graph', (payload) => {
+        update_graph(payload)
+    });
+
+    emitter.on('success_create_task', (payload) => {
+        add_new_task(payload)
+        show_task_vue.value = false
+    });
+
+    emitter.on('delete_task_success', (task_id) => {
+        delete_node(task_id)
+        show_task_vue.value = false
+    });
+
+    emitter.on('update_task_success', (task_info) => {
+        var node = graph.getCellById(task_info.id);
+        node.attr('title/text', task_info.name).attr('text/text', task_info.description);
+        show_task_vue.value = false
+
+        const inEdges = graph.getIncomingEdges('' + task_info.id);
+        console.log("now node edges: ", inEdges)
+        if (inEdges) {
+            for (const edge of inEdges) {
+                console.log("now reove node edges: ", edge)
+                graph.removeEdge(edge.id);
+            }
+        }
+        add_new_task(task_info)
+    });
+
+    emitter.on('success_load_task_table_data', (tasks_info) => {
+        currentTotalSize.value = tasks_info.recordsTotal
+    });
+
+    emitter.on('table_selected_changed', (checked_length) => {
+        if (checked_length > 0) {
+            choosed_task.value = true
+        } else {
+            choosed_task.value = false
+        }
+    })
+
+    emitter.on('success_run_tasks', (data) => {
+        run_tasks.value = false;
+        show_task_status.value = true
+    })
+
+    emitter.on('export_graph', (data) => {
+        export_graph.value = false
+        if (data.format == "PNG") {
+            graph.toPNG((dataUrl) => {
+                const link = document.createElement('a')
+                link.download = pipeline_name + ".png"
+                link.href = dataUrl
+                document.body.appendChild(link)
+                link.click()
+                link.remove()
+            }, {
+                backgroundColor: data['color_background'],
+                padding: 20,
+                quality: 1,
+                stylesheet: '.x6-node rect { fill: ' + data['color_node'] + '; } .x6-node text { fill: ' + data['color_font'] + '; font-size: 14px; }'
+            })
+        } else if (data.format == "JPEG") {
+            graph.toJPEG((dataUrl) => {
+                const link = document.createElement('a')
+                link.download = pipeline_name + ".jpeg"
+                link.href = dataUrl
+                document.body.appendChild(link)
+                link.click()
+                link.remove()
+            }, {
+                backgroundColor: data['color_background'],
+                padding: 20,
+                quality: 1,
+                stylesheet: '.x6-node rect { fill: ' + data['color_node'] + '; } .x6-node text { fill: ' + data['color_font'] + '; font-size: 14px; }'
+            })
+        } else {
+            graph.toSVG((dataUri: string) => {
+                DataUri.downloadDataUri(DataUri.svgToDataUrl(dataUri), pipeline_name + '.svg')
+            }, {
+                stylesheet: '.x6-node rect { fill: ' + data['color_node'] + '; } .x6-node text { fill: ' + data['color_font'] + '; font-size: 14px; }'
+            })
+        }
+
+    })
+
+    emitter.on('ai_generate', (data) => {
+        ai_timer.value = setInterval(() => {
+            ai_count.value++
+            ElMessage({ type: "success", message: "add new node: " + ai_count.value })
+            AiAddNode(ai_count.value)
+            if (ai_count.value >= 15) {
+                clearInterval(ai_timer.value)
+                ai_count.value = 0;
+                ai_nodes.value = []
+                ai_edges.value = []
+            }
+        }, 1000)
+    })
+}
+
+const emitterOff = () => {
+    emitter.off('update_graph', null);
+    emitter.off('success_create_task', null);
+    emitter.off('delete_task_success', null);
+    emitter.off('update_task_success', null);
+    emitter.off('success_load_task_table_data', null);
+    emitter.off('table_selected_changed', null);
+    emitter.off('success_run_tasks', null);
+    emitter.off('export_graph', null);
+    emitter.off('ai_generate', null);
+}
 
 onUnmounted(() => {
+    emitterOff();
     if (graph.value) {
         graph.value.off('node:contextmenu');
         graph.value.off('blank:contextmenu');
@@ -282,12 +401,33 @@ const callOnline = () => {
         cancelButtonText: '取消',
         beforeClose: (action, instance, done) => {
             if (action === 'confirm') {
-                isOnline.value = true
-                ElMessage({
-                    type: 'success',
-                    message: "流程上线成功！",
-                })
-                done()
+                axios
+                    .post('/pipeline/on_line/', qs.stringify({
+                        "pipe_id": pipeline_id.value,
+                        "reason": 0,
+                        "on_line": 1
+                    }))
+                    .then(response => {
+                        done()
+                        if (response.data.status != 0) {
+                            ElMessage({
+                                type: 'warning',
+                                message: "上线失败：" + response.data.msg,
+                            })
+                        } else {
+                            isOnline.value = true
+                            ElMessage({
+                                type: 'warning',
+                                message: "上线成功！"
+                            })
+                        }
+                    })
+                    .catch(error => {
+                        ElMessage({
+                                type: 'warning',
+                                message: "上线失败：" + error,
+                            })
+                    })
             } else {
                 done()
             }
@@ -307,12 +447,33 @@ const callOffline = () => {
         cancelButtonText: '取消',
         beforeClose: (action, instance, done) => {
             if (action === 'confirm') {
-                isOnline.value = false
-                ElMessage({
-                    type: 'success',
-                    message: "流程下线成功！",
-                })
-                done()
+                axios
+                    .post('/pipeline/on_line/', qs.stringify({
+                        "pipe_id": pipeline_id.value,
+                        "reason": 0,
+                        "on_line": 0
+                    }))
+                    .then(response => {
+                        done()
+                        if (response.data.status != 0) {
+                            ElMessage({
+                                type: 'warning',
+                                message: "下线失败：" + response.data.msg,
+                            })
+                        } else {
+                            isOnline.value = false
+                            ElMessage({
+                                type: 'warning',
+                                message: "下线成功！"
+                            })
+                        }
+                    })
+                    .catch(error => {
+                        ElMessage({
+                                type: 'warning',
+                                message: "下线失败：" + error,
+                            })
+                    })
             } else {
                 done()
             }
@@ -332,94 +493,6 @@ const handleDocumentClick = (e) => {
         popoverVisible.value = false;
     }
 };
-
-// 正确接收事件
-emitter.on('update_graph', (payload) => {
-    update_graph(payload)
-});
-
-emitter.on('success_create_task', (payload) => {
-    add_new_task(payload)
-    show_task_vue.value = false
-});
-
-emitter.on('delete_task_success', (task_id) => {
-    delete_node(task_id)
-    show_task_vue.value = false
-});
-
-emitter.on('update_task_success', (task_info) => {
-    var node = graph.getCellById(task_info.id);
-    node.attr('title/text', task_info.name).attr('text/text', task_info.description);
-    show_task_vue.value = false
-
-    const inEdges = graph.getIncomingEdges('' + task_info.id);
-    console.log("now node edges: ", inEdges)
-    if (inEdges) {
-        for (const edge of inEdges) {
-            console.log("now reove node edges: ", edge)
-            graph.removeEdge(edge.id);
-        }
-    }
-    add_new_task(task_info)
-});
-
-emitter.on('success_load_task_table_data', (tasks_info) => {
-    currentTotalSize.value = tasks_info.recordsTotal
-});
-
-emitter.on('table_selected_changed', (checked_length) => {
-    if (checked_length > 0) {
-        choosed_task.value = true
-    } else {
-        choosed_task.value = false
-    }
-})
-
-emitter.on('success_run_tasks', (data) => {
-    run_tasks.value = false;
-    show_task_status.value = true
-})
-
-emitter.on('export_graph', (data) => {
-    export_graph.value = false
-    if (data.format == "PNG") {
-        graph.toPNG((dataUrl) => {
-            const link = document.createElement('a')
-            link.download = pipeline_name + ".png"
-            link.href = dataUrl
-            document.body.appendChild(link)
-            link.click()
-            link.remove()
-        }, {
-            backgroundColor: data['color_background'],
-            padding: 20,
-            quality: 1,
-            stylesheet: '.x6-node rect { fill: ' + data['color_node'] + '; } .x6-node text { fill: ' + data['color_font'] + '; font-size: 14px; }'
-        })
-    } else if (data.format == "JPEG") {
-        graph.toJPEG((dataUrl) => {
-            const link = document.createElement('a')
-            link.download = pipeline_name + ".jpeg"
-            link.href = dataUrl
-            document.body.appendChild(link)
-            link.click()
-            link.remove()
-        }, {
-            backgroundColor: data['color_background'],
-            padding: 20,
-            quality: 1,
-            stylesheet: '.x6-node rect { fill: ' + data['color_node'] + '; } .x6-node text { fill: ' + data['color_font'] + '; font-size: 14px; }'
-        })
-    } else {
-        graph.toSVG((dataUri: string) => {
-            DataUri.downloadDataUri(DataUri.svgToDataUrl(dataUri), pipeline_name + '.svg')
-        }, {
-            stylesheet: '.x6-node rect { fill: ' + data['color_node'] + '; } .x6-node text { fill: ' + data['color_font'] + '; font-size: 14px; }'
-        })
-    }
-
-})
 
 function getRandomInt(min, max) {
     min = Math.ceil(min);
@@ -559,20 +632,6 @@ const AiAddNode = (index) => {
     graph.fromJSON(data_json)
 }
 
-emitter.on('ai_generate', (data) => {
-    ai_timer.value = setInterval(() => {
-        ai_count.value++
-        ElMessage({ type: "success", message: "add new node: " + ai_count.value })
-        AiAddNode(ai_count.value)
-        if (ai_count.value >= 15) {
-            clearInterval(ai_timer.value)
-            ai_count.value = 0;
-            ai_nodes.value = []
-            ai_edges.value = []
-        }
-    }, 1000)
-})
-
 const batchRun = () => {
     emitter.emit('batch_run_table_tasks', '');
 }
@@ -631,7 +690,10 @@ const initGraph = () => {
             pageBreak: true,
             pannable: true,
         },
-
+            events: {
+                // 禁用默认 Delete 行为
+                'delete': false  // 或 null
+            },
         mousewheel: {
             enabled: true,
             // zoomAtMousePosition: true,
@@ -653,6 +715,7 @@ const initGraph = () => {
             snap: {
                 radius: 20,
             },
+
             createEdge() {
                 return new Shape.Edge({
                     attrs: {
@@ -687,7 +750,7 @@ const initGraph = () => {
     })
     // #endregion
 
-    // #region 使用插件
+    // #region 使用模板任务
     graph
         .use(
             new Transform({
@@ -734,6 +797,10 @@ const initGraph = () => {
             rowHeight: 55,
         },
     })
+
+    graph.unbindKey('delete')
+graph.unbindKey('backspace')  // 顺便把 Backspace 也干掉
+
     // document.getElementById('stencil')!.appendChild(stencil.container)
     // #endregion
 
@@ -743,7 +810,7 @@ const initGraph = () => {
         if (cells.length) {
             graph.copy(cells)
         }
-        return false
+        return true
     })
     graph.bindKey(['meta+x', 'ctrl+x'], () => {
         const cells = graph.getSelectedCells()
@@ -752,13 +819,103 @@ const initGraph = () => {
         }
         return false
     })
-    graph.bindKey(['meta+v', 'ctrl+v'], () => {
-        if (!graph.isClipboardEmpty()) {
-            const cells = graph.paste({ offset: 32 })
-            graph.cleanSelection()
-            graph.select(cells)
+
+    // graph.bindKey(['delete', 'backspace'], (e) => {
+    //     // 阻止 X6 默认的删除行为
+    //     e.preventDefault?.()   // 重要！必须阻止默认
+    //     // 或者直接 return false（旧写法）
+    //     // return false
+
+    //     const selectedCells = graph.getSelectedCells()
+    //     if (selectedCells.length === 0) return
+
+    //     // 你的自定义逻辑
+    //     if (confirm(`确定删除这 ${selectedCells.length} 个元素吗？`)) {
+    //         graph.removeCells(selectedCells)
+    //         console.log('已自定义删除:', selectedCells.map(c => c.id))
+    //     }
+    // })
+
+    // 2. 监听节点按键（仅节点删除）
+    graph.bindKey(['delete', 'backspace'], (e) => {
+        const cells = graph.getSelectedCells()
+        if (!cells.length) {
+            return
         }
-        return false
+
+        const selected = graph.getSelectedCells()[0]  // 假设选中一个节点
+        e.preventDefault?.()
+        ElMessageBox.confirm("确定要删除任务吗？", "提示", {
+            confirmButtonText: "确定",
+            cancelButtonText: "取消",
+            type: "info",
+        })
+        .then(() => {
+            var params = {
+                "Task[id]": selected.id
+            }
+
+            axios
+                .post('/pipeline/delete_task/' + pipeline_id.value + '/', qs.stringify(params))
+                .then(response => {
+                    if (response.status != 200 || response.data.status != 0) {
+                        ElMessage.warning("删除任务失败：" + response.data.info)
+                    } else {
+                        console.log(response.data)
+                        delete_node(selected.id)
+                        show_task_vue.value = false
+                        ElMessage.success("删除任务成功！")
+                    }
+                })
+                .catch(error => {
+                    ElMessage.error("创建任务失败：" + error)
+                    console.log(error)
+                })
+        })
+        .catch((error) => {});
+    })
+
+    graph.bindKey(['meta+v', 'ctrl+v'], () => {
+        if (graph.isClipboardEmpty()) {
+            return;
+        }
+
+        const selected = graph.getSelectedCells()[0]  // 假设选中一个节点
+        ElMessageBox.confirm("确定要拷贝任务吗？", "提示", {
+            confirmButtonText: "确定",
+            cancelButtonText: "取消",
+            type: "info",
+        })
+        .then(() => {
+           axios
+                .post('/pipeline/copy_task/', qs.stringify({
+                    "dest_pl_id": pipeline_id.value,
+                    "task_id": selected.id
+                }))
+                .then(response => {
+                    if (response.status != 200 || response.data.status != 0) {
+                        ElMessage.warning("拷贝任务失败：" + response.data.msg)
+                    } else {
+                        var task_info = {
+                            "id": response.data.data.id,
+                            "name": response.data.data.name,
+                            "proc_type": response.data.data.proc_type,
+                            "description": response.data.data.description,
+                            "prev_task_ids": ""
+                        }
+                        
+                        add_new_task(task_info);
+                        ElMessage.success("拷贝任务成功！")
+                    }
+                })
+                .catch(error => {
+                    ElMessage.error("创建任务失败：" + error)
+                    console.log(error)
+                })
+        })
+        .catch((error) => {});
+    
+        return true
     })
 
     // undo redo
@@ -1064,7 +1221,7 @@ const initGraph = () => {
 
     });
 
-    graph.on('node:click', ({ e, node }) => {
+    graph.on('node:dblclick', ({ e, node }) => {
         update_task.value = true
         e.preventDefault();
         console.log("clicked: ", node.id)
@@ -1107,6 +1264,7 @@ const relayout = () => {
                 selectedPipeline.monitor_way |= 2
             }
 
+            isOnline.value = response.data.enable == 1 ? true : false
             var pipline_data = response.data
             axios
                 .post('/pipeline/get_tasks/', qs.stringify({
@@ -1141,9 +1299,14 @@ const update_graph = (data) => {
     if (data["pipeline_detail"]) {
         pipeline_name.value = data["pipeline_detail"]["name"];
     }
+            
+    if (data.pipeline_detail) {
+        isOnline.value = data.pipeline_detail.enable == 1 ? true : false
+    }
+    
     pipeline_id.value = data["pipe_id"];
     nodeKey.value = data["project_id"] + "-" + data["pipe_id"];
-    console.log("pipeline_id.value: ", nodeKey.value, pipeline_id.value)
+    console.log("pipeline_id.value: ", nodeKey.value, pipeline_id.value, data)
 
     allTasks.value = data
     const graph_data: Model.FromJSONData = {
@@ -1269,15 +1432,15 @@ const update_graph = (data) => {
         sortByCombo: true,  // 是否按combo排序
     })
 
-    if (data["pipe_usr_graph"] != null && data["pipe_usr_graph"].length > 0) {
-        graph.fromJSON(JSON.parse(data["pipe_usr_graph"]));
-    } else {
+    // if (data["pipe_usr_graph"] != null && data["pipe_usr_graph"].length > 0) {
+    //     graph.fromJSON(JSON.parse(data["pipe_usr_graph"]));
+    // } else {
         const data_json = dagreLayout.layout(graph_data);
         graph.fromJSON(data_json)
-    }
+    // }
     console.log("valid graph 1");
-    // graph.centerContent();
-    // graph.center()
+    graph.centerContent();
+    graph.center()
 
     if (pipeline_id.value) {
         var newUrl = window.location.origin + "/pipeline?id=" + pipeline_id.value
@@ -1565,8 +1728,15 @@ const initLoadHistoryGraph = async (task_info) => {
             emitter.emit('update_graph', "-1");
         })
 }
+
+useEventListener(window, 'resize', () => {
+    dynamicGraphHeight.value = window.innerHeight - 60
+})
+
 // Initialize on mount
 onMounted(() => {
+    dynamicGraphHeight.value = window.innerHeight - 60
+    emitterOn();
     const params = new URLSearchParams(window.location.search);
     const value = params.get('id');
     console.log("get pipeline id from url: ", value)
@@ -1760,6 +1930,9 @@ const handleCurrentChange = (val: number) => {
 </style>
 
 <style>
+.my-card-body {
+  padding: 0px!important;
+}
 /* 关键样式: 在非作用域样式中，使用变量和 !important 覆盖默认行为 */
 .context-menu-popover {
     position: fixed !important;

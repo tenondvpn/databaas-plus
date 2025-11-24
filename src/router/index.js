@@ -24,7 +24,7 @@ const routes = [
   {
     path: '/dashboard',
     component: ExternalView,
-    meta: { bypassAuth: true,external: true  }
+    meta: { bypassAuth: true, external: true }
   }
 ];
 
@@ -38,8 +38,7 @@ const whiteList = ['/external', '/public']
 
 // 路由守卫：检查用户是否登录
 router.beforeEach((to, from, next) => {
-    
-    document.title = to.meta.title || '浙理工实验平台'
+  document.title = to.meta.title || '智能计算平台'
   console.log("each url: ", to.path)
   emitter.emit('change_el_menu_item', to.path)
   if (whiteList.includes(to.path)) {

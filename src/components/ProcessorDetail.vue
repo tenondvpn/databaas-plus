@@ -4,7 +4,7 @@
       <template #label>
         <span class="custom-tabs-label">
           <el-icon><calendar /></el-icon>
-          <span>插件详情</span>
+          <span>模板任务详情</span>
         </span>
       </template>
       <ProcessorInfo :processor_info="processor_info"/>
@@ -46,7 +46,7 @@ export default {
 </script>
 
 <script lang="ts" setup>
-import { ref, defineProps } from 'vue'
+import { ref, defineProps, onMounted, onBeforeUnmount } from 'vue'
 import { Calendar } from '@element-plus/icons-vue'
 
 const processor_info = ref()
@@ -54,9 +54,25 @@ const props = defineProps({
     processor_info: Map,
 });
 
-emitter.on('upate_processor_to_show_detail', (proc_info) => {
-    processor_info.value = proc_info
+onMounted(() => {
+  emitterOn();
 })
+
+onBeforeUnmount(() => {
+  emitterOff();
+})
+
+const emitterOn = () => {
+  // emitter.on('upate_processor_to_show_detail', (proc_info) => {
+  //       console.log("00003 upate_processor_to_show_detail coming.")
+  //     processor_info.value = proc_info
+  // })
+}
+
+const emitterOff = () => {
+  // emitter.off('upate_processor_to_show_detail', null);
+}
+
 
 </script>
 

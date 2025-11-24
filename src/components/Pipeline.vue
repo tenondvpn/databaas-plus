@@ -89,7 +89,7 @@ const handleClose = (key, keyPath) => {
         <el-container>
             <el-container style="margin-top: 0px;">
                 <el-main style="padding: 0px;">
-                    <splitpanes horizontal :push-other-panes="true" style="height: 88vh;">
+                    <splitpanes horizontal :push-other-panes="true" style="height: 100vh;">
                         <pane>
                             <splitpanes :push-other-panes="false">
                                 <pane size="25">
@@ -102,18 +102,6 @@ const handleClose = (key, keyPath) => {
                         </pane>
                     </splitpanes>
                 </el-main>
-                <el-footer>
-                    <el-row :gutter="20">
-                        <el-col :span="10" :offset="2">
-                            <div class="grid-content ep-bg-purple" />
-                            <el-text class="mx-1" ><strong>Copyright © Shardora+ 2025</strong> All rights reserved.</el-text>
-                        </el-col>
-                        <el-col :span="4" :offset="8">
-                            <div class="grid-content ep-bg-purple" />
-                            <el-text class="mx-1" ><b>Version</b> 1.0.0</el-text>
-                        </el-col>
-                    </el-row>
-                </el-footer>
             </el-container>
         </el-container>
     </div>

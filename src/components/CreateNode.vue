@@ -1,9 +1,9 @@
 <template>
-    <el-form ref="ruleFormRef" style="max-width: 600px" :model="ruleForm" :rules="rules" label-width="auto"
+    <el-form ref="ruleFormRef" style="max-width: 750px;margin-left: 40px;" :model="ruleForm" :rules="rules" label-width="auto"
         label-position="left">
-        <el-form-item v-if="(update_task || taskType === TaskTypes.TYPE_SCRIPT)" prop="processor" required>
+        <el-form-item  prop="processor" required>
             <el-col :span="11">
-                <el-form-item prop="processor" label="选择插件" required>
+                <el-form-item prop="processor" label="选择模板任务" required>
                     <el-tree-select v-model="ruleForm.processor" lazy :load="load" :props="processor_props"
                         @change="handleSelectionChange" style="width: 240px" :disabled="update_task" />
                 </el-form-item>
@@ -13,6 +13,7 @@
             <el-col :span="10">
                 <el-form-item prop="processor_version" label="选择版本" required>
                     <el-select v-model="ruleForm.processor_version" value-key="id" placeholder="Select"
+                        @change="changeTaskInfo"
                         style="width: 240px">
                         <el-option v-for="item in version_options" :key="item.id" :label="item.label"
                             :value="item.id" />
@@ -20,8 +21,8 @@
                 </el-form-item>
             </el-col>
             <el-col :span="2">
-                        <el-tooltip class="box-item" effect="dark" content="点击查看插件文件列表！">
-            <el-button v-if="ruleForm.processor_version != '' && taskType === TaskTypes.TYPE_SCRIPT" type="primary" @click="show_detail = true" style="margin-top:-3px;margin-left: 3px;" :icon="Files" plain></el-button>
+                        <el-tooltip class="box-item" effect="dark" content="点击查看模板任务文件列表！">
+            <el-button  type="primary" @click="show_detail = true" style="margin-top:-3px;margin-left: 3px;" :icon="Files" plain></el-button>
         </el-tooltip>    
         </el-col>
         </el-form-item>
@@ -183,6 +184,7 @@ const props = defineProps({
     pipeline_id: String,
     task_info: Map,
     task_type: Number,
+    update_task: Boolean
 });
 
 const config_vue = ref(null)
@@ -190,6 +192,7 @@ const prev_tasks_vue = ref(null)
 const retry_times_radio = ref('1')
 const priority_radio = ref('6')
 const update_task = ref(false)
+const now_history_list = ref(null)
 
 const TaskTypes = {
     TYPE_STREAM_DATA: -1,
@@ -205,6 +208,7 @@ const TaskTypes = {
 
 
 const taskType = ref(TaskTypes.TYPE_SCRIPT)
+const srctaskType = ref(TaskTypes.TYPE_SCRIPT)
 
 interface RuleForm {
     processor: string
@@ -237,7 +241,7 @@ const ruleForm = reactive<RuleForm>({
 
 const rules = reactive<FormRules<RuleForm>>({
     processor: [
-        { required: true, message: '请选择插件', trigger: 'blur' },
+        { required: true, message: '请选择模板任务', trigger: 'blur' },
     ],
     processor_version: [
         { required: true, message: '请选择版本', trigger: 'blur' },
@@ -306,6 +310,7 @@ const rules = reactive<FormRules<RuleForm>>({
 
 onMounted(() => {
     taskType.value = props.task_type!
+    srctaskType.value = props.task_type!
     console.log("0 init create node: ", taskType.value, props.task_info)
 
     if (taskType.value == TaskTypes.TYPE_SCRIPT) {
@@ -364,17 +369,60 @@ onMounted(() => {
         var configs = props.task_info.task.config.split('\r\n')
         for (const config of configs) {
             var config_item = config.split('=')
+            if (config_item.length < 2) {
+                break
+            }
+
             console.log("config: ", config_item)
-            config_vue.value.AddConfig(config_item[0], config_item[1])
+            var val_split = config_item[1].split('H0')
+            config_vue.value.AddConfig(config_item[0], val_split[0])
         }
 
         prev_tasks_vue.value.AddPrevTasks(props.task_info.rely_tasks)
         console.log(ruleForm)
-        update_task.value = true
         ruleForm.shell = props.task_info.processor.template
     }
+
+    update_task.value = props.update_task
+    console.log("init create node is update_task: ", update_task.value)
+
 });
 
+const changeTaskInfo = () => {
+    var history = null;
+    for (const item of now_history_list.value) {
+        console.log("get changed history: ", item, ruleForm.processor_version)
+        if (item.id == ruleForm.processor_version) {
+            history = item;
+            break
+        }
+    }
+
+    if (history == null) {
+        return
+    }
+
+    taskType.value = history.type
+    procId.value = history.id
+    ruleForm.task_name = ""
+    ruleForm.retry_times = 1
+    retry_times_radio.value = "" + ruleForm.retry_times
+    priority_radio.value = "" + 6
+    ruleForm.priority = 6
+    ruleForm.timeout = 0
+    ruleForm.power_tag = "ALL"
+    ruleForm.desc = ""
+    var configs = history.config.split('\r\n')
+    for (const config of configs) {
+        var config_item = config.split('=')
+        console.log("config: ", config_item)
+        var val_split = config_item[1].split('H0')
+        config_vue.value.AddConfig(config_item[0], val_split[0])
+    }
+
+    console.log(ruleForm)
+    ruleForm.shell = history.template
+}
 const handleSelectionChange = (value) => {
     // `value` 参数就是新选中的节点的 value 值
     console.log('新选中的节点值:', value);
@@ -393,6 +441,7 @@ const handleSelectionChange = (value) => {
                 })
             }
 
+            now_history_list.value = response.data.history_list
             version_options.value = get_processor_data;
             console.log(get_processor_data)
             ChangcePowerNodes("script")
@@ -543,7 +592,8 @@ const load = (node, resolve) => {
     var params;
 
     if (node_id == undefined) {
-        params = {}
+        params = {
+        }
     } else {
         params = {
             id: node_id
@@ -558,6 +608,10 @@ const load = (node, resolve) => {
             // var json_obj = JSON.parse(response)
             var get_processor_data = [];
             for (const item of response.data) {
+                if (!item.is_project) {
+                    continue
+                }
+
                 get_processor_data.push({
                     id: item.id,
                     value: item.id,

@@ -75,7 +75,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick, reactive } from 'vue'
-import { EditorState } from '@codemirror/state'
+import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView, keymap } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
 import { history, historyKeymap } from "@codemirror/commands"
@@ -87,6 +87,17 @@ import emitter from './EventBus'
 import axios from 'axios'
 import qs from 'qs'
 import { ElMessage } from 'element-plus'
+import { useDark, useToggle } from "@vueuse/core";
+import { javascript } from '@codemirror/lang-javascript'  // 替换为 Solidity 语言支持
+
+const themes = {
+  'one-dark': oneDark,
+  'default': EditorView.theme({  // 默认纯白：自定义简单主题
+    '&.cm-editor': { background: '#ffffff', color: '#000000' },
+    '.cm-activeLine': { background: '#f0f0f0' },
+    '.cm-gutters': { background: '#ffffff', borderRight: '1px solid #eee' }
+  })
+}
 
 const theme = ref('dark')
 const isFullscreen = ref(false)
@@ -108,11 +119,15 @@ const gas_prepayment = ref(0)
 const transfer_amount = ref(0)
 const run_loading = ref(false)
 const abiJson = ref(null)
+const isDark = useDark();
+const themeCompartment = new Compartment()
 
 const form = reactive({
     args: [],
     function: '',
 })
+
+const emitterOn = () => {
 
 emitter.on('update_soldity_height', (height: number | string) => {
     run_loading.value = false
@@ -151,6 +166,70 @@ emitter.on('compile_solidity_code', (code: string) => {
             console.log(error)
         })
 });
+
+emitter.on('deploy_solidity_code', (code: string) => {
+    run_loading.value = false
+    not_constructer.value = false
+    if (!preivateKey.value || preivateKey.value.length == 0) {
+        ElMessage({
+            type: 'warning',
+            message: '请先输入私钥！',
+        })
+        return;
+    }
+
+    parseSolidity()
+    form.args = []
+    if (constructor.value) {
+        form.args = constructor.value.parameters.map(param => ({
+            type: param.type,
+            key: param.name,
+            value: ''
+        }));
+        dialogFormVisible.value = true;
+    } else {
+        deploySolidity();
+    }
+});
+
+emitter.on('call_function_solidity_code', (code: string) => {
+    run_loading.value = false
+    dialogTitle.value = '调用合约函数'
+    parseSolidity()
+    form.args = []
+    if (otherFunctions.value.length == 0) {
+        ElMessage({
+            type: 'warning',
+            message: '合约中没有可调用的函数！',
+        })
+        return;
+    }
+
+    form.function = otherFunctions.value[0].name
+    changeFunction()
+    dialogFormVisible.value = true;
+    not_constructer.value = true
+});
+
+
+emitter.on("theme_changed", (data) => {
+    if (isDark) {
+        setTheme('one-dark')
+    } else {
+        setTheme('default')
+    }
+});
+
+}
+
+const emitterOff = () => {
+    emitter.off('update_soldity_height', null);
+    emitter.off('set_solidity_private_key', null);
+    emitter.off('compile_solidity_code', null);
+    emitter.off('deploy_solidity_code', null);
+    emitter.off('call_function_solidity_code', null);
+    emitter.off("theme_changed", null);
+}
 
 function confirmDialog() {
     run_loading.value = true
@@ -325,30 +404,6 @@ function deploySolidity() {
         })
 }
 
-emitter.on('deploy_solidity_code', (code: string) => {
-    run_loading.value = false
-    not_constructer.value = false
-    if (!preivateKey.value || preivateKey.value.length == 0) {
-        ElMessage({
-            type: 'warning',
-            message: '请先输入私钥！',
-        })
-        return;
-    }
-
-    parseSolidity()
-    form.args = []
-    if (constructor.value) {
-        form.args = constructor.value.parameters.map(param => ({
-            type: param.type,
-            key: param.name,
-            value: ''
-        }));
-        dialogFormVisible.value = true;
-    } else {
-        deploySolidity();
-    }
-});
 
 const changeFunction = () => {
     const selectedFunction = otherFunctions.value.find(func => func.name === form.function);
@@ -363,24 +418,6 @@ const changeFunction = () => {
     }
 }
 
-emitter.on('call_function_solidity_code', (code: string) => {
-    run_loading.value = false
-    dialogTitle.value = '调用合约函数'
-    parseSolidity()
-    form.args = []
-    if (otherFunctions.value.length == 0) {
-        ElMessage({
-            type: 'warning',
-            message: '合约中没有可调用的函数！',
-        })
-        return;
-    }
-
-    form.function = otherFunctions.value[0].name
-    changeFunction()
-    dialogFormVisible.value = true;
-    not_constructer.value = true
-});
 
 // 响应式数据
 const codeValue = ref(`// SPDX-License-Identifier: GPL-3.0
@@ -615,8 +652,8 @@ const initEditor = () => {
     ]
 
     // 添加主题
-    if (theme.value === 'dark') {
-        extensions.push(oneDark)
+    if (isDark) {
+        extensions.push(themeCompartment.of(oneDark))
     }
 
     const state = EditorState.create({
@@ -632,6 +669,15 @@ const initEditor = () => {
     // 监听光标位置变化
     editorView.dom.addEventListener('mousemove', updateCursorFromEvent)
     editorView.dom.addEventListener('keydown', updateCursorFromEvent)
+}
+
+function setTheme(name) {
+  if (!editorView) return
+  const theme = themes[name] || []
+  themeCompartment.reconfigure(theme)
+  editorView.dispatch({
+    effects: themeCompartment.reconfigure(theme)
+  })
 }
 
 // 更新光标位置
@@ -650,6 +696,7 @@ const updateCursorFromEvent = () => {
 
 // 生命周期
 onMounted(() => {
+    emitterOn()
     console.log('SolidityEditor mounted.')
     nextTick(() => {
         console.log('Calling initEditor...')
@@ -659,6 +706,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+    emitterOff()
     if (editorView) {
         editorView.destroy()
     }

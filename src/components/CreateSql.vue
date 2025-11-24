@@ -3,7 +3,7 @@
         label-position="left">
         <el-form-item prop="processor" required>
             <el-col :span="12">
-                <el-form-item prop="processor" label="选择插件" required>
+                <el-form-item prop="processor" label="选择模板任务" required>
                     <el-tree-select v-model="ruleForm.processor" lazy :load="load" :props="processor_props"
                         @change="handleSelectionChange" style="width: 240px" />
                 </el-form-item>
@@ -181,7 +181,7 @@ const locationOptions = ['Home', 'Company', 'School']
 
 const rules = reactive<FormRules<RuleForm>>({
     processor: [
-        { required: true, message: '请选择插件', trigger: 'blur' },
+        { required: true, message: '请选择模板任务', trigger: 'blur' },
     ],
     processor_version: [
         { required: true, message: '请选择版本', trigger: 'blur' },
@@ -352,7 +352,8 @@ const load = (node, resolve) => {
     var params;
 
     if (node_id == undefined) {
-        params = {}
+        params = {
+        }
     } else {
         params = {
             id: node_id
@@ -367,6 +368,10 @@ const load = (node, resolve) => {
             // var json_obj = JSON.parse(response)
             var get_processor_data = [];
             for (const item of response.data) {
+                if (!item.is_project) {
+                    continue
+                }
+
                 get_processor_data.push({
                     id: item.id,
                     value: item.id,

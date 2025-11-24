@@ -2,7 +2,7 @@
     <el-input class="esponsive-input" v-model="query" placeholder="Please enter keyword" @input="onQueryChanged"
         :prefix-icon="Search" />
 
-    <div :class="{ appContainerDark: isDark, appContainerLight: !isDark }" style="min-height: 77.2vh;">
+    <div :class="{ appContainerDark: isDark, appContainerLight: !isDark }" :style="`min-height: ${dynamicTreeHeight}px;`">
         <div class="tree-container" ref="treeContainerRef">
             <el-tree-v2 ref="treeRef" :data="data" :props="props" :height="treeHeight" :filter-method="filterMethod"
                 :expand-on-click-node="false" @node-expand="handleNodeExpand" @node-click="handleNodeClick"
@@ -36,7 +36,7 @@
                                         <el-button type="info" size="small" :icon="Folder"
                                             @click="callCreateProject(node)" />
                                     </el-tooltip>
-                                    <el-tooltip class="box-item" effect="dark" content="点击新建插件！">
+                                    <el-tooltip class="box-item" effect="dark" content="点击新建模板任务！">
                                         <el-button type="success" size="small" :icon="Plus"
                                             @click="updateProcessorClicked(node)" />
                                     </el-tooltip>
@@ -56,11 +56,11 @@
                         <div v-else>
                             <span class="node-buttons">
                                 <el-button-group class="ml-4">
-                                    <el-tooltip class="box-item" effect="dark" content="点击编辑插件信息！">
+                                    <el-tooltip class="box-item" effect="dark" content="点击编辑模板任务信息！">
                                         <el-button type="primary" @click="updateProcessorClicked(node)" size="small"
                                             :icon="Edit" />
                                     </el-tooltip>
-                                    <el-tooltip class="box-item" effect="dark" content="点击删除插件！">
+                                    <el-tooltip class="box-item" effect="dark" content="点击删除模板任务！">
                                         <el-button type="warning" size="small" :icon="Delete"
                                             @click="clickDeleteProcessor(node)" />
                                     </el-tooltip>
@@ -117,6 +117,7 @@ import UpdateFolder from './UpdateFolder.vue'
 import { ElMessageBox } from 'element-plus';
 import { ElMessage } from 'element-plus';
 import SqlIcon from './sqlIcon.vue';
+import { useEventListener } from '@vueuse/core'
 
 const createProcessor = ref(false)
 const drawer_direction = ref<DrawerProps['direction']>('rtl')
@@ -125,10 +126,11 @@ const treeHeight = ref(0);
 let resizeObserver = null;
 const query = ref('')
 const treeRef = ref()
-const project_path = ref('我的项目')
+const project_path = ref('我创建的')
 const project_id = ref('1')
 const openProcessorModelTitle = ref("创建流程")
 const pipeline_detail = ref({})
+const dynamicTreeHeight = ref(10000)
 const selectedProcessorValue = {
     "status": 1,
     "msg": "",
@@ -168,189 +170,227 @@ const updateProject = ref(false)
 
 const isDark = useDark();
 
-emitter.on('create_folder', (data) => {
-    axios
-        .post('/processor/add_new_project/', qs.stringify({
-            'project_name': data.name,
-            'description': '',
-            'parent_id': data.cur_id,
-            'type': 1,
-        })).then(response => {
-            if (response.data.status != 0) {
-                ElMessage({
-                    type: 'error',
-                    message: '创建项目文件夹失败：' + response.data.msg,
-                })
-            } else {
-                createProject.value = false
-
-                data["id"] = response.data.id
-                data["text"] = data.name
-                data["is_project"] = true
-                data["pipe_id"] = 0
-                var pid = data["cur_id"]
-                if (pid == 0) {
-                    pid = -1
-                }
-                if (data['type'] == 0) {
-                    // 子目录
-                    appendNode(data["selected_id"], data)
+const emitterOn = () => {
+    emitter.on('create_folder', (data) => {
+        axios
+            .post('/processor/add_new_project/', qs.stringify({
+                'project_name': data.name,
+                'description': '',
+                'parent_id': data.cur_id,
+                'type': 99,
+            })).then(response => {
+                if (response.data.status != 0) {
+                    ElMessage({
+                        type: 'error',
+                        message: '创建项目文件夹失败：' + response.data.msg,
+                    })
                 } else {
-                    // 平级目录
-                    appendNode(pid, data)
-                }
-                ElMessage({
-                    type: 'success',
-                    message: '创建项目文件夹成功！',
-                })
-            }
-        })
-        .catch(error => {
-            ElMessage({
-                type: 'error',
-                message: '创建项目文件夹失败：' + error,
-            })
-        })
-})
+                    createProject.value = false
 
-emitter.on('update_folder', (node_data) => {
-    axios
-        .post('/pipeline/update_project/', qs.stringify({
-            'project_name': node_data.name,
-            'description': '',
-            'id': node_data.cur_id,
-        })).then(response => {
-            if (response.data.status != 0) {
+                    data["id"] = response.data.id
+                    data["text"] = data.name
+                    data["is_project"] = true
+                    data["pipe_id"] = 0
+                    var pid = data["cur_id"]
+                    if (pid == 0) {
+                        pid = -1
+                    }
+                    if (data['type'] == 0) {
+                        // 子目录
+                        appendNode(data["selected_id"], data)
+                    } else {
+                        // 平级目录
+                        appendNode(pid, data)
+                    }
+                    ElMessage({
+                        type: 'success',
+                        message: '创建项目文件夹成功！',
+                    })
+                }
+            })
+            .catch(error => {
                 ElMessage({
                     type: 'error',
-                    message: '修改项目文件夹失败：' + response.data.msg,
+                    message: '创建项目文件夹失败：' + error,
                 })
-            } else {
-                updateProject.value = false
+            })
+    })
 
-                const node = treeRef.value.getNode(node_data.cur_id);
-                if (node) {
-                    console.log("upate project name: ", node, node.label)
-                    node.label = node_data.name;
-                    var tmp_node = findNode(node_data.cur_id, data.value)
-                    tmp_node.label = node_data.name
-                    console.log("upate project name: ", node, node.label)
-                    data.value = [...data.value]
+    emitter.on('update_folder', (node_data) => {
+        axios
+            .post('/pipeline/update_project/', qs.stringify({
+                'project_name': node_data.name,
+                'description': '',
+                'id': node_data.cur_id,
+            })).then(response => {
+                if (response.data.status != 0) {
+                    ElMessage({
+                        type: 'error',
+                        message: '修改项目文件夹失败：' + response.data.msg,
+                    })
+                } else {
+                    updateProject.value = false
+
+                    const node = treeRef.value.getNode(node_data.cur_id);
+                    if (node) {
+                        console.log("upate project name: ", node, node.label)
+                        node.label = node_data.name;
+                        var tmp_node = findNode(node_data.cur_id, data.value)
+                        tmp_node.label = node_data.name
+                        console.log("upate project name: ", node, node.label)
+                        data.value = [...data.value]
+                    }
+
+                    ElMessage({
+                        type: 'success',
+                        message: '修改项目文件夹成功！',
+                    })
+                }
+            })
+            .catch(error => {
+                ElMessage({
+                    type: 'error',
+                    message: '修改项目文件夹失败：' + error,
+                })
+            })
+    })
+
+    emitter.on("success_update_pipeline", (payload) => {
+        createProcessor.value = false;
+    });
+
+    emitter.on('home_view_click_create_pipeline', (payload) => {
+        selectedProcessor.value = structuredClone(selectedProcessorValue)
+        selectedProcessor.value.project_id = payload
+        console.log("selectedProcessor.value.project_id: ", selectedProcessor.value.project_id)
+        createProcessor.value = true;
+    });
+
+    emitter.on("graph_call_delete_pipeline", (key) => {
+        // var node = findNode(key, data.value);
+        const node = treeRef.value.getNode(key)
+        console.log(node)
+        clickDeleteProcessor(node)
+    });
+
+    emitter.on('click_show_pipeline', (key) => {
+        openProcessorModelTitle.value = "修改流程"
+        axios
+            .post('/pipeline/get_pipeline_detail/', qs.stringify({
+                'pipe_id': key.split("_")[1],
+            }))
+            .then(response => {
+                selectedProcessor.value = response.data
+                if (response.data.email_to != "") {
+                    selectedProcessor.value.monitor_way |= 1
                 }
 
-                ElMessage({
-                    type: 'success',
-                    message: '修改项目文件夹成功！',
-                })
-            }
-        })
-        .catch(error => {
-            ElMessage({
-                type: 'error',
-                message: '修改项目文件夹失败：' + error,
+                if (response.data.sms_to != "") {
+                    selectedProcessor.value.monitor_way |= 2
+                }
+
+                const str_id = "" + key;
+
+                console.log(str_id, key, str_id.split("_").length)
+                project_id.value = str_id
+                createProcessor.value = true;
             })
-        })
-})
+            .catch(error => {
+                console.log(error)
+                emitter.emit('update_graph', "-1");
+            })
+    })
 
-emitter.on("success_update_pipeline", (payload) => {
-    createProcessor.value = false;
-});
+    emitter.on('create_processor_success', (data) => {
+        console.log(data)
+        var prco_data = data['proc_detail']['processor']
+        appendNode(prco_data['project_id'], prco_data)
+        createProcessor.value = false;
+        handleNodeClick({ "id": prco_data["id"] }, null)
+    })
 
-emitter.on('home_view_click_create_pipeline', (payload) => {
-    selectedProcessor.value = structuredClone(selectedProcessorValue)
-    selectedProcessor.value.project_id = payload
-    console.log("selectedProcessor.value.project_id: ", selectedProcessor.value.project_id)
-    createProcessor.value = true;
-});
+    emitter.on('update_processor_success', (data) => {
+        createProcessor.value = false;
+        console.log('update_processor_success', data)
+        handleNodeClick({ "id": data["id"] }, null)
+    })
 
-emitter.on("graph_call_delete_pipeline", (key) => {
-    // var node = findNode(key, data.value);
-    const node = treeRef.value.getNode(key)
-    console.log(node)
-    clickDeleteProcessor(node)
-});
-
-emitter.on('click_show_pipeline', (key) => {
-    openProcessorModelTitle.value = "修改流程"
-    axios
-        .post('/pipeline/get_pipeline_detail/', qs.stringify({
-            'pipe_id': key.split("_")[1],
-        }))
-        .then(response => {
-            selectedProcessor.value = response.data
-            if (response.data.email_to != "") {
-                selectedProcessor.value.monitor_way |= 1
-            }
-
-            if (response.data.sms_to != "") {
-                selectedProcessor.value.monitor_way |= 2
-            }
-
-            const str_id = "" + key;
-
-            console.log(str_id, key, str_id.split("_").length)
-            project_id.value = str_id
-            createProcessor.value = true;
-        })
-        .catch(error => {
-            console.log(error)
-            emitter.emit('update_graph', "-1");
-        })
-})
-
-emitter.on('create_processor_success', (data) => {
-    console.log(data)
-    var prco_data = data['proc_detail']['processor']
-    appendNode(prco_data['project_id'], prco_data)
-    createProcessor.value = false;
-    handleNodeClick({ "id": prco_data["id"] }, null)
-})
-
-emitter.on('update_processor_success', (data) => {
-    createProcessor.value = false;
-    console.log('update_processor_success', data)
-    handleNodeClick({ "id": data["id"] }, null)
-})
-
-emitter.on('click_upadate_processor', (data) => {
-    var node_data = {
-        "id": data.processor.project_id + "_" + data.processor.id,
-        "label": data.processor.name,
-        "key": data.processor.project_id + "_" + data.processor.id,
-        "parent": data.parent
-    }
-    console.log("click_upadate_processor", data)
-    updateProcessorClicked(node_data, null)
-})
-
-emitter.on('click_delete_processor', (data) => {
-    console.log("click_delete_processor", data)
-    var node_data = {
-        "id": data.processor.project_id + "_" + data.processor.id,
-        "label": data.processor.name,
-        "key": data.processor.project_id + "_" + data.processor.id,
-        'parent': {
-            'key': data.processor.project_id
+    emitter.on('click_upadate_processor', (data) => {
+        var node_data = {
+            "id": data.processor.project_id + "_" + data.processor.id,
+            "label": data.processor.name,
+            "key": data.processor.project_id + "_" + data.processor.id,
+            "parent": data.parent
         }
-    }
-    clickDeleteProcessor(node_data)
-})
+        console.log("click_upadate_processor", data)
+        updateProcessorClicked(node_data, null)
+    })
 
-emitter.on('home_view_click_create_processor', (data) => {
-    var key = data.processor.project_id
-    if (data.processor.id > 0) {
-        key = data.processor.project_id + "_" + data.processor.id
-    }
-
-    var node_data = {
-        "id": key,
-        "label": data.processor.name,
-        "key": key,
-        'parent': {
-            'key': data.processor.project_id
+    emitter.on('click_delete_processor', (data) => {
+        console.log("click_delete_processor", data)
+        var node_data = {
+            "id": data.processor.project_id + "_" + data.processor.id,
+            "label": data.processor.name,
+            "key": data.processor.project_id + "_" + data.processor.id,
+            'parent': {
+                'key': data.processor.project_id
+            }
         }
-    }
-    updateProcessorClicked(node_data)
+        clickDeleteProcessor(node_data)
+    })
+
+    emitter.on('home_view_click_create_processor', (data) => {
+        var key = data.processor.project_id
+        if (data.processor.id > 0) {
+            key = data.processor.project_id + "_" + data.processor.id
+        }
+
+        var node_data = {
+            "id": key,
+            "label": data.processor.name,
+            "key": key,
+            'parent': {
+                'key': data.processor.project_id
+            }
+        }
+        updateProcessorClicked(node_data)
+    })
+
+    emitter.on("share_processor_success", (data) => {
+        handleDelete({
+            "key": data["old_project_id"] + "_" + data["id"],
+            "parent": {
+                "key": data["old_project_id"]
+            }
+        })
+
+        appendNode(data["project_id"], {
+            "id": data["old_project_id"] + "_" + data["id"],
+            "text": data["name"],
+            "is_project": false,
+            "type": data["type"]
+        })
+    })
+}
+
+
+const emitterOff = () => {
+    emitter.off('create_folder', null)
+    emitter.off('update_folder', null)
+    emitter.off("success_update_pipeline",null);
+    emitter.off('home_view_click_create_pipeline', null);
+    emitter.off("graph_call_delete_pipeline", null);
+    emitter.off('click_show_pipeline', null)
+    emitter.off('create_processor_success', null)
+    emitter.off('update_processor_success', null)
+    emitter.off('click_upadate_processor', null)
+    emitter.off('click_delete_processor', null)
+    emitter.off('home_view_click_create_processor', null)
+    emitter.off("share_processor_success", null)
+}
+
+onBeforeUnmount(() => {
+    emitterOff()
 })
 
 interface Tree {
@@ -458,7 +498,7 @@ const handleNodeExpand = async (nodeData, nodeInstance) => {
     await axios
         .get('/processor/get_processor_tree_async/', {
             params: {
-                "id": nodeData.id
+                "id": nodeData.id,
             }
         })
         .then(response => {
@@ -469,6 +509,10 @@ const handleNodeExpand = async (nodeData, nodeInstance) => {
 
             // var json_obj = JSON.parse(response)
             for (const item of response.data) {
+                // if (!item.is_project) {
+                //     continue
+                // }
+
                 appendNode(nodeData.id, item);
             }
         })
@@ -476,7 +520,7 @@ const handleNodeExpand = async (nodeData, nodeInstance) => {
 }
 
 const updateProcessorClicked = (nodeData) => {
-    openProcessorModelTitle.value = "创建插件"
+    openProcessorModelTitle.value = "创建模板任务"
     selectedProcessor.value = structuredClone(selectedProcessorValue);
     console.log("ttttt:", nodeData.key)
     var str_key = "" + nodeData.key
@@ -496,7 +540,7 @@ const updateProcessorClicked = (nodeData) => {
         return;
     }
 
-    openProcessorModelTitle.value = "修改插件"
+    openProcessorModelTitle.value = "修改模板任务"
     axios
         .post('/processor/get_processor/', qs.stringify({
             'id': nodeData.key.split("_")[1],
@@ -504,7 +548,7 @@ const updateProcessorClicked = (nodeData) => {
         .then(response => {
             selectedProcessor.value = response.data
             selectedProcessor.value.project_path = nodeData.parent.label
-            selectedProcessor.value.project_id = response.data.processor.id
+            selectedProcessor.value.project_id = response.data.processor.project_id
             createProcessor.value = true;
             const str_id = "" + nodeData.key;
 
@@ -555,9 +599,9 @@ const handleDelete = (node) => {
 
 const clickDeleteProcessor = (nodeData) => {
     ElMessageBox({
-        title: '删除插件',
+        title: '删除模板任务',
         message: h('p', null, [
-            h('span', null, '确定要删除插件吗? 插件名： '),
+            h('span', null, '确定要删除模板任务吗? 模板任务名： '),
             h('i', { style: 'color: blue' }, nodeData.label),
         ]),
         showCancelButton: true,
@@ -582,7 +626,7 @@ const clickDeleteProcessor = (nodeData) => {
                         done()
                         ElMessage({
                             type: 'danger',
-                            message: "插件删除失败：" + error,
+                            message: "模板任务删除失败：" + error,
                         })
                     })
             } else {
@@ -592,26 +636,10 @@ const clickDeleteProcessor = (nodeData) => {
     }).then((action) => {
         ElMessage({
             type: 'success',
-            message: "插件删除成功！",
+            message: "模板任务删除成功！",
         })
     })
 }
-
-emitter.on("share_processor_success", (data) => {
-    handleDelete({
-        "key": data["old_project_id"] + "_" + data["id"],
-        "parent": {
-            "key": data["old_project_id"]
-        }
-    })
-
-    appendNode(data["project_id"], {
-        "id": data["old_project_id"] + "_" + data["id"],
-        "text": data["name"],
-        "is_project": false,
-        "type": data["type"]
-    })
-})
 
 const handleNodeClick = (nodeData, nodeInstance) => {
     const str_id = "" + nodeData.id;
@@ -645,7 +673,7 @@ const handleNodeClick = (nodeData, nodeInstance) => {
             if (response.data.status != 0) {
                 ElMessage({
                     type: 'danger',
-                    message: "获取插件详情失败：" + response.data.msg,
+                    message: "获取模板任务详情失败：" + response.data.msg,
                 })
                 return;
             }
@@ -655,12 +683,12 @@ const handleNodeClick = (nodeData, nodeInstance) => {
             console.log('history: ', newUrl)
 
             emitter.emit('upate_processor_to_show_detail', { "tag": "0", "project_path": project_path.value, 'proc_detail': response.data });
-            console.log('upate_processor_to_show_detail get tasks 1', project_path.value, response.data)
+            console.log('emit upate_processor_to_show_detail get tasks 1', project_path.value, response.data)
         })
         .catch(error => {
             ElMessage({
                 type: 'danger',
-                message: "获取插件详情失败：" + error,
+                message: "获取模板任务详情失败：" + error,
             })
         })
 }
@@ -682,6 +710,10 @@ const GetProjectsAndProcessors = async () => {
             console.log(response)
             // var json_obj = JSON.parse(response)
             for (const item of response.data) {
+                // if (!item.is_project) {
+                //     continue
+                // }
+
                 appendNode(-2, item);
             }
 
@@ -698,7 +730,13 @@ const GetProjectsAndProcessors = async () => {
     }
 }
 
+useEventListener(window, 'resize', () => {
+    dynamicTreeHeight.value = window.innerHeight - 130
+})
+
 onMounted(() => {
+    emitterOn()
+    dynamicTreeHeight.value = window.innerHeight - 130
     if (treeContainerRef.value) {
         treeHeight.value = treeContainerRef.value.clientHeight;
     }

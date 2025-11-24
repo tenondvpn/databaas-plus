@@ -125,19 +125,7 @@ onMounted(() => {
                         </pane>
                     </splitpanes>
                 </el-main>
-                <el-footer style="margin-top: -5px;">
-                    <el-row :gutter="2">
-                        <el-col :span="10" :offset="2">
-                            <div class="grid-content ep-bg-purple" />
-                            <el-text class="mx-1"><strong>Copyright © Shardora+ 2025</strong> All rights
-                                reserved.</el-text>
-                        </el-col>
-                        <el-col :span="4" :offset="8">
-                            <div class="grid-content ep-bg-purple" />
-                            <el-text class="mx-1"><b>Version</b> 1.0.0</el-text>
-                        </el-col>
-                    </el-row>
-                </el-footer>
+               
             </el-container>
         </el-container>
     </div>

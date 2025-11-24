@@ -8,7 +8,7 @@
             }">
 
             <el-row v-if="!show_description" :gutter="37">
-                <el-col :span="6" style="padding: 0px; width: 297px; padding-left: 18px;">
+                <el-col :span="6" style="padding: 0px; width: 274px; padding-left: 18px;">
                     <el-input v-model="item.key" aria-label="参数名" placeholder="参数名" />
                 </el-col>
                 <el-col :span="1" style="padding: 0px;margin-left:10px;margin-right:-4px"> :
@@ -18,7 +18,7 @@
                 </el-col>
             </el-row>
             <el-row v-else :gutter="37">
-                <el-col :span="6" style="padding: 0px; width: 297px; padding-left: 18px;">
+                <el-col :span="6" style="padding: 0px; width: 214px; padding-left: 18px;">
                     <el-input v-model="item.key" aria-label="参数名" placeholder="参数名" />
                 </el-col>
                 <el-col :span="1" style="padding: 0px;margin-left:10px;margin-right:-4px"> :

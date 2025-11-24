@@ -41,16 +41,16 @@
             <el-table-column align="center" label="操作">
                 <template #default="scope">
                     <el-button-group class="ml-4">
-                        <el-tooltip class="box-item" effect="dark" content="点击查看插件详情！">
+                        <el-tooltip class="box-item" effect="dark" content="点击查看模板任务详情！">
                             <el-button v-if="scope.row.type == 'zip'" plain type="primary" size="small"
                                 @click="detail(scope.row)" :icon="InfoFilled">
                             </el-button>
                         </el-tooltip>
-                        <el-tooltip class="box-item" effect="dark" content="点击重新上传插件版本！">
+                        <el-tooltip class="box-item" effect="dark" content="点击重新上传模板任务版本！">
                             <el-button plain type="primary" size="small" @click="handleEdit(scope.row)" :icon="Edit">
                             </el-button>
                         </el-tooltip>
-                        <el-tooltip class="box-item" effect="dark" content="点击删除插件！">
+                        <el-tooltip class="box-item" effect="dark" content="点击删除模板任务！">
                             <el-button plain size="small" type="danger" @click="handleDelete(scope.row)" :icon="Delete">
                             </el-button>
                         </el-tooltip>
@@ -111,7 +111,7 @@
 
 import axios from 'axios'
 import qs from 'qs'
-import { ref, onMounted, h } from 'vue'
+import { ref, onMounted, h, onUnmounted } from 'vue'
 import emitter from './EventBus'
 import { Edit, Delete, InfoFilled } from '@element-plus/icons-vue'
 import gitIcon from './gitIcon.vue'
@@ -136,15 +136,27 @@ const show_upload_info = ref(false)
 const show_upload_file = ref(false)
 const show_upload_git = ref(false)
 const show_detail = ref(false)
-var tableData = ref([])
+const tableData = ref([])
 const nowVersionList = ref<Set<String>>()
 const drawer_direction = ref<DrawerProps['direction']>('rtl')
 
-emitter.on('success_upload_processor', (data) => {
-    show_upload_file.value = false
-    show_upload_git.value = false
-    loadAllData()
-})
+const emitterOn = () => {
+    emitter.on('success_upload_processor', (data) => {
+        show_upload_file.value = false
+        show_upload_git.value = false
+        loadAllData()
+    })
+
+    emitter.on('upate_processor_to_show_detail', (proc_info) => {
+        console.log("00005 upate_processor_to_show_detail coming.")
+        update_processor(proc_info)
+    })
+}
+
+const emitterOff = () => {
+    emitter.off('success_upload_processor', null);
+    emitter.off('upate_processor_to_show_detail', null);
+}
 
 const detail = (row) => {
     show_detail.value = true
@@ -174,7 +186,7 @@ const handleDelete = (row) => {
     ElMessageBox({
         title: '删除版本',
         message: h('p', null, [
-            h('span', null, '确定要删除插件版本吗? '),
+            h('span', null, '确定要删除模板任务版本吗? '),
         ]),
         showCancelButton: true,
         confirmButtonText: '确认',
@@ -193,7 +205,7 @@ const handleDelete = (row) => {
                         if (response.data.status != 0) {
                             ElMessage({
                                 type: 'danger',
-                                message: "删除插件版本失败：" + response.data.msg,
+                                message: "删除模板任务版本失败：" + response.data.msg,
                             })
 
                             done()
@@ -203,7 +215,7 @@ const handleDelete = (row) => {
                         loadAllData()
                         ElMessage({
                             type: 'success',
-                            message: "删除插件版本成功！",
+                            message: "删除模板任务版本成功！",
                         })
                         done()
                         instance.confirmButtonLoading = false
@@ -212,7 +224,7 @@ const handleDelete = (row) => {
                         done()
                         ElMessage({
                             type: 'danger',
-                            message: "删除插件版本失败：" + error,
+                            message: "删除模板任务版本失败：" + error,
                         })
                     })
             } else {
@@ -262,6 +274,7 @@ const loadAllData = () => {
 }
 
 onMounted(() => {
+    emitterOn()
     if (props.processor_info) {
         procDetail.value = props.processor_info
         update_processor(procDetail.value)
@@ -288,10 +301,9 @@ const update_processor = (proc_info) => {
     loadAllData()
 }
 
-emitter.on('upate_processor_to_show_detail', (proc_info) => {
-    update_processor(proc_info)
+onUnmounted(() => {
+    emitterOff()
 })
-
 </script>
 
 <style scoped></style>

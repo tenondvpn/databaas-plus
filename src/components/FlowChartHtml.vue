@@ -185,7 +185,7 @@ const initGraph = () => {
     })
     // #endregion
 
-    // #region 使用插件
+    // #region 使用模板任务
     graph
         .use(
             new Transform({

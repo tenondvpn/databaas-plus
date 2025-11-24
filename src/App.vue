@@ -8,13 +8,13 @@
         <el-tooltip class="box-item" content="进入流程管理页面，管理自己的流程！">
             <el-menu-item v-if="show_menu" index="1" @click="toPipeline">流程管理</el-menu-item>
         </el-tooltip>
-        <el-tooltip class="box-item" content="管理所有的计算任务！">
-            <el-menu-item v-if="show_menu" index="2" @click="toRuning">所有任务</el-menu-item>
-        </el-tooltip>
-        <el-tooltip class="box-item" content="管理插件，实现算法、数据、算力、模型的共享复用！">
+        <el-tooltip class="box-item" content="插件管理！">
             <el-menu-item v-if="show_menu" index="3" @click="toProcessor">插件管理</el-menu-item>
         </el-tooltip>
-        <el-tooltip class="box-item" content="进入平台统计大屏，包括算力，数据，模型，任务，用户统计信息！">
+        <el-tooltip class="box-item" content="管理所有的任务执行状态！">
+            <el-menu-item v-if="show_menu" index="2" @click="toRuning">流程状态</el-menu-item>
+        </el-tooltip>
+         <el-tooltip class="box-item" content="进入平台统计大屏，包括算力，数据，模型，任务，用户统计信息！">
             <el-menu-item v-if="show_menu" index="4" @click="toDashboard">平台大屏</el-menu-item>
         </el-tooltip>
         <el-tooltip class="box-item" content="solidity智能合约编辑管理！">
@@ -42,7 +42,7 @@
             </template>
         </el-dropdown>
     </el-menu>
-    <router-view></router-view>
+    <router-view  ></router-view>
 </template>
 <script lang="ts">
 export default {
@@ -51,7 +51,7 @@ export default {
 </script>
 
 <script lang="ts" setup>
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch, onBeforeUnmount } from 'vue'
 import { reactive, toRefs } from 'vue'
 import { Sunny, Moon } from "@element-plus/icons-vue";
 import { useDark, useToggle } from "@vueuse/core";
@@ -63,13 +63,9 @@ import { ElMessage } from 'element-plus';
 import emitter from './components/EventBus';
 import { ElNotification } from 'element-plus';
 
-const show_menu = ref(false)
+const show_menu = ref(true)
 const show_solidty = ref(true)
 const checked1 = ref(true)
-emitter.on("show_menu", (show) => {
-    show_menu.value = show
-    console.log("show_menu: ", show_menu.value)
-})
 // 从 localStorage 获取或设置默认主题色
 const themeColor = ref(localStorage.getItem('themeColor') || '#5F95FF');
 
@@ -86,6 +82,7 @@ watch(themeColor, (newColor) => {
 });
 
 onMounted(() => {
+    emitterOn();
     const token = localStorage.getItem('access_token');
     if (token) {
         show_menu.value = true
@@ -93,6 +90,9 @@ onMounted(() => {
 
 });
 
+onBeforeUnmount(() => {
+    emitterOff();
+})
 
 // 保存颜色到 localStorage
 const saveTheme = () => {
@@ -129,7 +129,7 @@ const handleCommand = async (command) => {
             localStorage.setItem('access_token', '')
             axios.defaults.headers.common['Authorization'] = ''; // 设置默认请求头
             ElMessage.success('已退出登录');
-            show_menu.value = false
+            show_menu.value = true
             router.push('/login'); // 登录成功后跳转到主页
         } catch (error) {
             ElNotification({ title: "出现错误", message: "退出失败：" + error, type: "danger", position: 'top-left', })
@@ -168,26 +168,42 @@ const toProcessor = () => {
 
 const isDark = useDark();
 
-const toggleDark = useToggle(isDark);
+const tmp_toggleDark = useToggle(isDark);
+const toggleDark = () => {
+    tmp_toggleDark()
+    emitter.emit("theme_changed", {})
+}
 
 const activeIndex = ref('1')
 const handleSelect = (key: string, keyPath: string[]) => {
     console.log(key, keyPath)
 }
 
-emitter.on('change_el_menu_item', (path) => {
-    if (path.indexOf('/dashboard') >= 0) {
-        activeIndex.value = '4'
-    } else if (path.indexOf('/pipeline') >= 0) {
-        activeIndex.value = '1'
-    } else if (path.indexOf('/runing') >= 0) {
-        activeIndex.value = '2'
-    } else if (path.indexOf('/processor') >= 0) {
-        activeIndex.value = '3'
-    } else {
-        activeIndex.value = '5'
-    }
-})
+const emitterOn = () => {
+    emitter.on("show_menu", (show) => {
+        show_menu.value = show
+        console.log("show_menu: ", show_menu.value)
+    })
+
+    emitter.on('change_el_menu_item', (path) => {
+        if (path.indexOf('/dashboard') >= 0) {
+            activeIndex.value = '4'
+        } else if (path.indexOf('/pipeline') >= 0) {
+            activeIndex.value = '1'
+        } else if (path.indexOf('/runing') >= 0) {
+            activeIndex.value = '2'
+        } else if (path.indexOf('/processor') >= 0) {
+            activeIndex.value = '3'
+        } else {
+            activeIndex.value = '5'
+        }
+    })
+}
+
+const emitterOff = () => {
+    emitter.off("show_menu", null)
+    emitter.off("change_el_menu_item", null)
+}
 
 const state = reactive({
     circleUrl:
