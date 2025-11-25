@@ -169,6 +169,7 @@ const ChangcePowerNodes = (type) => {
             }
         })
         .then(response => {
+            power_options.value = []
             for (const key in response.data.tags) {
                 power_options.value.push({
                     "id": key,

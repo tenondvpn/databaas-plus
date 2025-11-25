@@ -14,12 +14,12 @@
         <el-tooltip class="box-item" content="管理所有的任务执行状态！">
             <el-menu-item v-if="show_menu" index="2" @click="toRuning">流程状态</el-menu-item>
         </el-tooltip>
-         <el-tooltip class="box-item" content="进入平台统计大屏，包括算力，数据，模型，任务，用户统计信息！">
+         <!-- <el-tooltip class="box-item" content="进入平台统计大屏，包括算力，数据，模型，任务，用户统计信息！">
             <el-menu-item v-if="show_menu" index="4" @click="toDashboard">平台大屏</el-menu-item>
         </el-tooltip>
         <el-tooltip class="box-item" content="solidity智能合约编辑管理！">
             <el-menu-item v-if="show_solidty" index="5" @click="toSolidty">智能合约</el-menu-item>
-        </el-tooltip>
+        </el-tooltip> -->
         <el-menu-item index="5" style="margin-top:0px" class="no-underline">
             <el-tooltip class="box-item" content="切换背景色！">
                 <el-checkbox fill="#409eff" v-model="checked1" style="margin-top:-15px;margin-left: -12px;float:right;"

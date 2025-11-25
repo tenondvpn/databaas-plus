@@ -49,6 +49,10 @@
             <el-button type="success" class="!ml-0" plain @click="callOffline" size=""
                 style="margin-top: 4px; margin-left: 454px; z-index:1051;position: fixed;" :icon="VideoPlay" />
         </el-tooltip>
+        <el-tooltip class="box-item" effect="dark" content="修改整个流程所有task的执行服务器集群名">
+            <el-button class="!ml-0" plain @click="setAllTaskServerTag" size=""
+                style="margin-top: 4px; margin-left: 504px; z-index:1051;position: fixed;" :icon="EditPen" />
+        </el-tooltip>
         <!-- <el-tooltip class="box-item" effect="dark" content="通过AI自动生成用户需要的流程">
             <el-button class="!ml-0" plain @click="ai_generate = true" size=""
                 style="margin-top: 4px; margin-left: 504px; z-index:1051;position: fixed;" :icon="aiIcon" />
@@ -155,6 +159,22 @@
             <AiGenerate />
         </template>
     </el-drawer>
+    <el-drawer v-model="show_set_all_task_server_tag" :direction="drawer_direction" size="30%" :destroy-on-close="true">
+        <template #header>
+            <h4>设置流程所有任务执行集群名
+            </h4>
+        </template>
+        <template #default>
+             <el-select filterable v-model="select_server_tag" value-key="id" placeholder="请选择算力集群标签"
+                style="width: 423px;margin-right:6px;">
+                <el-option v-for="item in power_options" :key="item.id" :label="item.name" :value="item.id" />
+            </el-select>
+
+
+            <el-divider />
+            <el-button style="margin-top: 20px;" type="primary" @click="callSetServerTag">设置</el-button>
+        </template>
+    </el-drawer>
 </template>
 
 <script lang="ts">
@@ -208,9 +228,11 @@ import {
     VideoPlay,
     DArrowRight,
     Select,
+    EditPen,
     CloseBold,
     Menu as IconMenu,
 } from '@element-plus/icons-vue'
+
 import { useDark, useToggle } from "@vueuse/core";
 import emitter from './EventBus';
 import axios from 'axios';
@@ -264,6 +286,9 @@ const ai_count = ref(0)
 const ai_nodes = ref([])
 const ai_edges = ref([])
 const dynamicGraphHeight = ref(1000)
+const show_set_all_task_server_tag = ref(false)
+const power_options = ref([])
+const select_server_tag = ref("ALL")
 
 const emitterOn = () => {
     // 正确接收事件
@@ -389,6 +414,60 @@ onUnmounted(() => {
     }
     document.removeEventListener('click', handleDocumentClick);
 });
+
+const ChangcePowerNodes = (type) => {
+    axios
+        .get('/pipeline/get_power_nodes/', {
+            params: {
+                "type": type
+            }
+        })
+        .then(response => {
+            for (const key in response.data.tags) {
+                power_options.value.push({
+                    "id": key,
+                    "name": key,
+                })
+            }
+            console.log(response.data)
+        })
+        .catch(error => console.log(error))
+}
+
+const setAllTaskServerTag = () => {
+    power_options.value = []
+    ChangcePowerNodes("script")
+    show_set_all_task_server_tag.value = true
+}
+
+const callSetServerTag = () => {
+    axios
+        .post('/pipeline/set_pipeline_server_tag/', qs.stringify({
+            "pipe_id": pipeline_id.value,
+            "server_tag": select_server_tag.value
+        }))
+        .then(response => {
+            if (response.data.status != 0) {
+                ElMessage({
+                    type: 'warning',
+                    message: "设置服务器集群名失败：" + response.data.msg,
+                })
+            } else {
+                ElMessage({
+                    type: 'success',
+                    message: "设置服务器集群名成功！"
+                })
+                console.log("callSetServerTag: ", select_server_tag.value)
+                show_set_all_task_server_tag.value = false
+            }
+        })
+        .catch(error => {
+            ElMessage({
+                    type: 'warning',
+                    message: "设置服务器集群名失败：" + error,
+                })
+        })
+}
 
 const callOnline = () => {
     ElMessageBox({

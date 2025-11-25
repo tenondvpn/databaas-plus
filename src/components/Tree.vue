@@ -111,7 +111,7 @@
         <span>
             <el-form :model="form" label-width="auto" style="max-width: 600px" :label-position="labelPosition">
                 <el-form-item prop="project" label="选择项目">
-                    <el-tree-select v-model="projectToCopy" :data="treeData"  
+                    <el-tree-select v-model="projectToCopy" :data="treeData"  check-strictly
                                 node-key="id" />
                 </el-form-item>
                 <el-form-item label="新流程名">
