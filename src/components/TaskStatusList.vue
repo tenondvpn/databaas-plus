@@ -391,6 +391,7 @@
         :pipeline_id="pipeline_id"
         :task_info="clicked_task_info"
         :task_type="taskType"
+        :update_task="true"
       />
     </template>
   </el-drawer>

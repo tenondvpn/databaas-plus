@@ -327,7 +327,6 @@ const getProjectTree = async () => {
     await axios
         .get('/pipeline/get_project_tree/', {
             params: {
-                "type": 2
             }
         })
         .then(response => {

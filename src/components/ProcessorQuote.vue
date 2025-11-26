@@ -51,7 +51,7 @@
             <h4 style="width: 100px">更新任务配置</h4>
         </template>
         <template #default>
-            <CreateNode :pipeline_id="pipeline_id" :task_info="clicked_task_info" :task_type="taskType" />
+            <CreateNode :pipeline_id="pipeline_id" :task_info="clicked_task_info" :task_type="taskType" :update_task="true" />
         </template>
     </el-drawer>
 </template>
