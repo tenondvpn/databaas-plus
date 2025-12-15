@@ -1,12 +1,10 @@
 <script lang="ts">
-import Header from './Header.vue';
 import ProcessorTree from './ProcessorTree.vue';
 import ProcessorChat from './ProcessorChat.vue';
 
 export default {
     name: 'App',
     components: {
-        Header,
         ProcessorTree,
         ProcessorChat,
     },

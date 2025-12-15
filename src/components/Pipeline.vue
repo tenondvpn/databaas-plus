@@ -1,12 +1,10 @@
 <script lang="ts">
-import Header from './Header.vue';
 import Tree from './Tree.vue';
 import FlowChart from './FlowChart.vue';
 
 export default {
     name: 'App',
     components: {
-        Header,
         Tree,
         FlowChart,
     },

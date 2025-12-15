@@ -1,5 +1,4 @@
 <script lang="ts">
-import Header from './Header.vue';
 import Tree from './Tree.vue';
 import FlowChart from './FlowChart.vue';
 import SolidityEditor from './SolidityEditor.vue';
@@ -13,7 +12,6 @@ import { nextTick } from 'vue';
 export default {
     name: 'App',
     components: {
-        Header,
         Tree,
         FlowChart,
     },
@@ -125,7 +123,7 @@ onMounted(() => {
                         </pane>
                     </splitpanes>
                 </el-main>
-               
+
             </el-container>
         </el-container>
     </div>

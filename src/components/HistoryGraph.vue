@@ -1,5 +1,4 @@
 <script lang="ts">
-import Header from './Header.vue';
 import Tree from './Tree.vue';
 import FlowChart from './FlowChart.vue';
 import emitter from './EventBus'
@@ -9,7 +8,6 @@ const task_info = ref(null)
 export default {
     name: 'App',
     components: {
-        Header,
         Tree,
         FlowChart,
     },
