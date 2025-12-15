@@ -22,6 +22,8 @@
         </el-button-group>
 
         <el-popover :visible="visible" placement="top" :width="580" style="margin-top: 5px;float: right;">
+            <p>设置合约执行url</p>
+            <el-input v-model="test_url" style="width: 540px"  />
             <p>设置私钥</p>
             <el-input v-model="privateKey" style="width: 540px" type="password" placeholder="Please input password"
                 show-password />
@@ -52,7 +54,7 @@
 <script setup lang="ts">
 import { DataAnalysis, Operation, CaretLeft, Key, Odometer } from '@element-plus/icons-vue'
 import emitter from './EventBus';
-import { nextTick, ref } from 'vue';
+import { nextTick, ref, onMounted, onUnmounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import axios from 'axios';
 import qs from 'qs';
@@ -61,6 +63,7 @@ const textarea = ref('')
 const contract_address = ref('')
 const visible = ref(false)
 const privateKey = ref('cefc2c33064ea7691aee3e5e4f7842935d26f3ad790d81cf015e79b78958e848')
+const test_url = ref('http://192.168.56.136:7001')
 const logArea = ref(null);
 const gas_visible = ref(false)
 const gas_prepayment = ref(1000000)
@@ -70,8 +73,16 @@ const toCompile = () => {
     emitter.emit('compile_solidity_code', "");
 }
 
+onMounted(() => {
+    axios.defaults.baseURL = test_url.value;
+    emitterOn();
+});
+
+onUnmounted(() => {
+    emitterOff();
+});
+
 const toDeploy = () => {
-    contract_address.value = ''
     emitter.emit('deploy_solidity_code', "");
 }
 
@@ -80,15 +91,13 @@ const toCallFunction = () => {
 }
 
 const toSetPrivateKey = () => {
+    axios.defaults.baseURL = test_url.value;
     visible.value = false
     emitter.emit('set_solidity_private_key', privateKey.value);
     ElMessage({
         type: 'success',
-        message: '私钥设置成功！',
+        message: '运行环境设置成功！',
     })
-
-
-    
 }
 
 const CallGasPrepayment = () => {
@@ -124,6 +133,15 @@ const CallGasPrepayment = () => {
 
 }
 
+const emitterOff = () => {
+emitter.off('compile_solidity_code_res', null);
+emitter.off('deploy_solidity_code_res', null);
+emitter.off('update_soldity_status_height', null);
+emitter.off('compile_solidity_code_res', null);
+}
+
+const emitterOn = () => {
+
 emitter.on('compile_solidity_code_res', (data) => {
     textarea.value += "\n------------------------\n";
     if (data.status != 0) {
@@ -143,6 +161,12 @@ emitter.on('compile_solidity_code_res', (data) => {
 });
 
 emitter.on('deploy_solidity_code_res', (data) => {
+    if (data.id == "") {
+        textarea.value = "";
+        contract_address.value = "";
+        return;
+    }
+
     textarea.value += "\n------------------------\n";
     if (data.status != 0) {
         textarea.value += "\n部署错误:\n" + data.msg;
@@ -177,4 +201,5 @@ emitter.on('update_soldity_status_height', (height: number | string) => {
         editorContainer.style.height = adjustedHeight + 'px';
     }
 });
+}
 </script>

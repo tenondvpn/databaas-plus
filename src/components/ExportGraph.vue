@@ -54,7 +54,7 @@ const color_fount = ref('rgb(255, 255, 255)')
 const radio2 = ref('PNG')
 
 onMounted(() => {
-    if (isDark) {
+    if (isDark.value) {
         color_background.value = 'rgba(0, 0, 0, 0.68)'
     } else {
         color_background.value = 'rgba(255, 255, 255)'

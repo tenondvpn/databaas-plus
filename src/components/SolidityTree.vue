@@ -34,16 +34,16 @@
                                         <el-button plain type="info" size="small" :icon="Folder"
                                             @click="callCreateProject(node)" />
                                     </el-tooltip>
-                                    <el-tooltip class="box-item" effect="dark" content="点击新建流程！">
+                                    <el-tooltip class="box-item" effect="dark" content="点击新建合约！">
                                         <el-button plain type="success" size="small" :icon="Plus"
                                             @click="addPipelineClicked(node)" />
                                     </el-tooltip>
-                                    <el-tooltip v-if="node.label != '我的流程'" class="box-item" effect="dark"
+                                    <el-tooltip v-if="node.label != '我的合约'" class="box-item" effect="dark"
                                         content="编辑分类">
                                         <el-button plain type="primary" size="small" :icon="Edit"
                                             @click="callUpdateProject(node)" />
                                     </el-tooltip>
-                                    <el-tooltip v-if="node.label != '我的流程'" class="box-item" effect="dark"
+                                    <el-tooltip v-if="node.label != '我的合约'" class="box-item" effect="dark"
                                         content="删除分类">
                                         <el-button plain type="warning" size="small" :icon="Delete"
                                             @click="deleteProject(node)" />
@@ -54,15 +54,15 @@
                         <div v-else>
                             <span class="node-buttons">
                                 <el-button-group class="ml-4">
-                                    <el-tooltip class="box-item" effect="dark" content="点击编辑流程信息！">
+                                    <el-tooltip class="box-item" effect="dark" content="点击编辑合约信息！">
                                         <el-button plain type="primary" @click="addPipelineClicked(node)" size="small"
                                             :icon="Edit" />
                                     </el-tooltip>
-                                    <el-tooltip class="box-item" effect="dark" content="点击删除流程！">
+                                    <el-tooltip class="box-item" effect="dark" content="点击删除合约！">
                                         <el-button plain type="warning" size="small" :icon="Delete"
                                             @click="clickDeletePipeline(node)" />
                                     </el-tooltip>
-                                    <el-tooltip class="box-item" effect="dark" content="点击拷贝流程">
+                                    <el-tooltip class="box-item" effect="dark" content="点击拷贝合约">
                                         <el-button plain type="primary" @click="copyPipelineClicked(node)" size="small"
                                             :icon="CopyDocument" />
                                     </el-tooltip>
@@ -75,12 +75,12 @@
         </div>
     </div>
 
-    <el-drawer v-model="createPipeline" :direction="drawer_direction" size="50%" :destroy-on-close="true">
+    <el-drawer v-model="createSolidity" :direction="drawer_direction" size="50%" :destroy-on-close="true">
         <template #header>
             <h4>{{ openPipelineModelTitle }}</h4>
         </template>
         <template #default>
-            <CreatePipelineVue :pipeline_info="selectedPipeline" />
+            <CreateSolidity :pipeline_info="selectedPipeline" />
         </template>
     </el-drawer>
 
@@ -104,7 +104,7 @@
 
     <el-dialog
         v-model="centerDialogVisible"
-        title="拷贝流程"
+        title="拷贝合约"
         width="500"
         destroy-on-close
         center>
@@ -114,7 +114,7 @@
                     <el-tree-select v-model="projectToCopy" :data="treeData"  check-strictly
                                 node-key="id" />
                 </el-form-item>
-                <el-form-item label="新流程名">
+                <el-form-item label="新合约名">
                     <el-input v-model="pipelineNameToCopy" />
                 </el-form-item>
             </el-form>
@@ -141,23 +141,23 @@ import qs from 'qs';
 
 import emitter from './EventBus.ts';
 import { DrawerProps } from 'element-plus';
-import CreatePipelineVue from './CreatePipeline.vue'
+import CreateSolidity from './CreateSolidity.vue'
 import CreateFolder from './CreateFolder.vue'
 import UpdateFolder from './UpdateFolder.vue'
 import { ElMessageBox } from 'element-plus';
 import { ElMessage } from 'element-plus';
 import { useEventListener } from '@vueuse/core'
 
-const createPipeline = ref(false)
+const createSolidity = ref(false)
 const drawer_direction = ref<DrawerProps['direction']>('rtl')
 const treeContainerRef = ref(null);
 const treeHeight = ref(0);
 let resizeObserver = null;
 const query = ref('')
 const treeRef = ref()
-const project_path = ref('我的流程')
+const project_path = ref('我的合约')
 const project_id = ref('1')
-const openPipelineModelTitle = ref("创建流程")
+const openPipelineModelTitle = ref("创建合约")
 const pipeline_detail = ref({})
 const showed_init_expand = ref(false)
 const selectedPipelineValue = {
@@ -199,7 +199,7 @@ const emitterOn = () => {
 
 emitter.on("success_create_pipeline", (payload) => {
     appendNode(payload["pid"], payload)
-    createPipeline.value = false;
+    createSolidity.value = false;
 });
 
 emitter.on('create_folder', (data) => {
@@ -208,7 +208,7 @@ emitter.on('create_folder', (data) => {
             'project_name': data.name,
             'description': '',
             'parent_id': data.cur_id,
-            'type': 0
+            'type': 4
         })).then(response => {
             if (response.data.status != 0) {
                 ElMessage({
@@ -287,13 +287,13 @@ emitter.on('update_folder', (node_data) => {
 })
 
 emitter.on("success_update_pipeline", (payload) => {
-    createPipeline.value = false;
+    createSolidity.value = false;
 });
 
 emitter.on('home_view_click_create_pipeline', (payload) => {
     selectedPipeline.value = structuredClone(selectedPipelineValue)
     selectedPipeline.value.project_id = payload
-    createPipeline.value = true;
+    createSolidity.value = true;
 });
 
 emitter.on("graph_call_delete_pipeline", (key) => {
@@ -308,7 +308,7 @@ emitter.on('show_graph_called', (data) => {
 })
 
 emitter.on('click_show_pipeline', (key) => {
-    openPipelineModelTitle.value = "修改流程"
+    openPipelineModelTitle.value = "修改合约"
     axios
         .post('/pipeline/get_pipeline_detail/', qs.stringify({
             'pipe_id': key.split("-")[1],
@@ -327,7 +327,7 @@ emitter.on('click_show_pipeline', (key) => {
 
             console.log(str_id, key, str_id.split("-").length)
             project_id.value = str_id
-            createPipeline.value = true;
+            createSolidity.value = true;
         })
         .catch(error => {
             console.log(error)
@@ -370,14 +370,14 @@ const getProjectTree = async () => {
     await axios
         .get('/pipeline/get_project_tree/', {
             params: {
-                "type": 0
+                "type": 4
             }
         })
         .then(response => {
             treeData.value = response.data
         })
         .catch(error => {
-            ElMessage.error("创建流程失败: " + error)
+            ElMessage.error("创建合约失败: " + error)
         })
 }
 
@@ -385,7 +385,7 @@ const callCopyPipeline = () => {
     if (pipelineNameToCopy.value.trim() == "") {
         ElMessage({
             type: 'warning',
-            message: "请输入新的流程名",
+            message: "请输入新的合约名",
         })
         return;
     }
@@ -402,7 +402,7 @@ const callCopyPipeline = () => {
             if (response.data.status != 0) {
                 ElMessage({
                     type: 'danger',
-                    message: "拷贝流程失败：" + response.data.msg,
+                    message: "拷贝合约失败：" + response.data.msg,
                 })
             } else {
                 centerDialogVisible.value = false
@@ -416,14 +416,14 @@ const callCopyPipeline = () => {
                 appendNode(projectToCopy.value, params)
                 ElMessage({
                     type: 'success',
-                    message: "拷贝流程成功！",
+                    message: "拷贝合约成功！",
                 })
             }
         })
         .catch(error => {
             ElMessage({
                 type: 'danger',
-                message: "拷贝流程失败：" + error,
+                message: "拷贝合约失败：" + error,
             })
         })
 }
@@ -519,6 +519,7 @@ const handleNodeExpand = (nodeData, nodeInstance) => {
         .get('/pipeline/get_project_tree_async/', {
             params: {
                 "id": nodeData.id,
+                "type": 4
             }
         })
         .then(response => {
@@ -537,13 +538,13 @@ const handleNodeExpand = (nodeData, nodeInstance) => {
 }
 
 const addPipelineClicked = (nodeData) => {
-    openPipelineModelTitle.value = "创建流程"
+    openPipelineModelTitle.value = "创建合约"
     selectedPipeline.value = structuredClone(selectedPipelineValue);
     console.log("ttttt:", nodeData.key)
     var str_key = "" + nodeData.key
     if (str_key.split("-").length != 2) {
         selectedPipeline.value.project_id = nodeData.key
-        createPipeline.value = true;
+        createSolidity.value = true;
         project_path.value = nodeData.label
         var parent_node = nodeData.parent
         while (parent_node) {
@@ -555,7 +556,7 @@ const addPipelineClicked = (nodeData) => {
         return;
     }
 
-    openPipelineModelTitle.value = "修改流程"
+    openPipelineModelTitle.value = "修改合约"
     axios
         .post('/pipeline/get_pipeline_detail/', qs.stringify({
             'pipe_id': nodeData.key.split("-")[1],
@@ -570,7 +571,7 @@ const addPipelineClicked = (nodeData) => {
                 selectedPipeline.value.monitor_way |= 2
             }
 
-            createPipeline.value = true;
+            createSolidity.value = true;
             const str_id = "" + nodeData.key;
 
             console.log(str_id, nodeData, str_id.split("-").length)
@@ -617,9 +618,9 @@ const handleDelete = (node) => {
 
 const clickDeletePipeline = (nodeData) => {
     ElMessageBox({
-        title: '删除流程',
+        title: '删除合约',
         message: h('p', null, [
-            h('span', null, '确定要删除流程吗? 流程名： '),
+            h('span', null, '确定要删除合约吗? 合约名： '),
             h('i', { style: 'color: red' }, nodeData.label),
         ]),
         showCancelButton: true,
@@ -643,7 +644,7 @@ const clickDeletePipeline = (nodeData) => {
                         done()
                         ElMessage({
                             type: 'danger',
-                            message: "流程删除失败：" + error,
+                            message: "合约删除失败：" + error,
                         })
                     })
             } else {
@@ -653,7 +654,7 @@ const clickDeletePipeline = (nodeData) => {
     }).then((action) => {
         ElMessage({
             type: 'success',
-            message: "流程删除成功！",
+            message: "合约删除成功！",
         })
     })
 }
@@ -732,6 +733,7 @@ const GetProjectsAndPipelines = async () => {
     await axios
         .get('/pipeline/get_project_tree_async/', {
             params: {
+                "type": 4
             }
         })
         .then(response => {
@@ -817,7 +819,7 @@ const appendNode = (parentId, item) => {
 
     var project_name = item["text"];
     if (project_name == "我的项目") {
-        project_name = "我的流程"
+        project_name = "我的合约"
     }
 
     const newChild = {

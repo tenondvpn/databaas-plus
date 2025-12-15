@@ -87,8 +87,10 @@ import emitter from './EventBus'
 import axios from 'axios'
 import qs from 'qs'
 import { ElMessage } from 'element-plus'
-import { useDark, useToggle } from "@vueuse/core";
-import { javascript } from '@codemirror/lang-javascript'  // 替换为 Solidity 语言支持
+import { useDark } from "@vueuse/core";
+import { Prec } from '@codemirror/state';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags } from '@lezer/highlight';
 
 const themes = {
   'one-dark': oneDark,
@@ -121,13 +123,26 @@ const run_loading = ref(false)
 const abiJson = ref(null)
 const isDark = useDark();
 const themeCompartment = new Compartment()
+const pipeline_id = ref();
+var second_timer = null;
+const prev_saved_code = ref('')
 
 const form = reactive({
     args: [],
     function: '',
 })
 
+const getTimestamp = () => {
+    return Math.floor(new Date().getTime() / 1000)
+}
+
+var prev_save_graph_tm_ms = getTimestamp()
+
 const emitterOn = () => {
+
+emitter.on('update_graph', (payload) => {
+    update_graph(payload)
+});
 
 emitter.on('update_soldity_height', (height: number | string) => {
     run_loading.value = false
@@ -213,22 +228,56 @@ emitter.on('call_function_solidity_code', (code: string) => {
 
 
 emitter.on("theme_changed", (data) => {
-    if (isDark) {
-        setTheme('one-dark')
+    if (!useDark().value) {
+        switchToDarkTheme()
+        console.log("now dark")
     } else {
-        setTheme('default')
+        switchToLightTheme()
+        console.log("now light")
     }
 });
 
 }
 
 const emitterOff = () => {
+    emitter.off('update_graph', null);
     emitter.off('update_soldity_height', null);
     emitter.off('set_solidity_private_key', null);
     emitter.off('compile_solidity_code', null);
     emitter.off('deploy_solidity_code', null);
     emitter.off('call_function_solidity_code', null);
     emitter.off("theme_changed", null);
+}
+
+function isValidJSON(str) {
+  try {
+    JSON.parse(str);
+    return true;  // 解析成功，返回 true
+  } catch (error) {
+    return false; // 解析失败，返回 false
+  }
+}
+
+const update_graph = (data) => {
+    emitter.emit('deploy_solidity_code_res', {"status": 0, "id": ""});
+    if (data["data"]["is_project"] == 1) {
+        return
+    }
+
+    console.log("get code value: ", data)
+    pipeline_id.value = data["data"]["pipe_id"]
+    if (data["data"]["pipe_usr_graph"]) {
+        if (isValidJSON(data["data"]["pipe_usr_graph"])) {
+            const obj = JSON.parse(data["data"]["pipe_usr_graph"]);
+            codeValue.value = obj["code"]
+            contractAddress.value = obj["address"]
+            emitter.emit('deploy_solidity_code_res', {"status": 0, "id": obj["address"]});
+        } else {
+            codeValue.value = data["data"]["pipe_usr_graph"]
+        }
+    
+        prev_saved_code.value = codeValue.value
+    }
 }
 
 function confirmDialog() {
@@ -386,6 +435,9 @@ function deploySolidity() {
                     })
                     dialogFormVisible.value = false
                     contractAddress.value = response.data.id;
+                    prev_save_graph_tm_ms = 0;
+                    prev_saved_code.value = "";
+                    TimeToSaveGraph();
                 })
                 .catch(error => {
                     ElMessage({
@@ -423,25 +475,7 @@ const changeFunction = () => {
 const codeValue = ref(`// SPDX-License-Identifier: GPL-3.0
 pragma solidity >=0.7.0 <0.9.0;
 
-contract ContractName {
-    uint256 public myUint;
-    bytes public myData;
-    bytes public myInfo;
-
-    constructor(uint256 _myUint, bytes memory _data, bytes memory _info) {
-        myUint = _myUint;
-        myData = _data;
-        myInfo = _info;
-    }
-
-    function setUint(uint256 _myUint) public {
-        myUint = _myUint;
-    }
-
-    function getUint() public view returns (uint256) {
-        return myUint;
-    }
-}`)
+`)
 
 
 function parseSolidity() {
@@ -615,6 +649,52 @@ function solidityCompleter(context) {
     }
 }
 
+    // 可选：自定义 light mode 下的语法高亮（更清晰的颜色）
+const lightHighlightStyle = HighlightStyle.define([
+    { tag: tags.keyword, color: "#d73a49", fontWeight: "bold" },        // 关键字红色加粗
+    { tag: tags.function(tags.variableName), color: "#6f42c1" },       // 函数名紫色
+    { tag: tags.string, color: "#032f62" },                            // 字符串深蓝
+    { tag: tags.number, color: "#005cc5" },                            // 数字蓝色
+    { tag: tags.comment, color: "#6a737d", fontStyle: "italic" },      // 注释灰色斜体
+    { tag: tags.variableName, color: "#24292e" },
+    { tag: tags.operator, color: "#d73a49" },
+    { tag: tags.typeName, color: "#22863a" },                          // 类型绿色
+    { tag: tags.propertyName, color: "#e36209" }
+]);
+
+// Light Theme 配置
+const lightTheme = EditorView.theme({
+    "&": {
+        fontFamily: "'SF Mono', Monaco, 'Cascadia Code', monospace",
+        fontSize: "13px",
+        lineHeight: "1.5",
+        backgroundColor: "#ffffff",
+        color: "#24292e"
+    },
+    ".cm-content": {
+        fontFamily: "Menlo, Monaco, 'Courier New', monospace",
+        fontSize: "12px",
+        color: "#24292e",
+        caretColor: "#0366d6"
+    },
+    ".cm-gutter, .cm-gutters": {
+        backgroundColor: "#f6f8fa",
+        color: "#6a737d",
+        borderRight: "1px solid #e1e4e8"
+    },
+    ".cm-activeLine": {
+        backgroundColor: "#ffd33d1a"
+    },
+    ".cm-selectionBackground, ::selection": {
+        backgroundColor: "#0366d699"
+    },
+    ".cm-cursor": {
+        borderLeftColor: "#0366d6"
+    }
+}, { dark: false });
+
+
+
 // 初始化编辑器
 const initEditor = () => {
     if (!editorElement.value) return
@@ -634,26 +714,76 @@ const initEditor = () => {
                 return true
             }
         }),
-        EditorView.theme({
-            "&": {
-                fontFamily: "'SF Mono', Monaco, 'Cascadia Code', monospace",
-                fontSize: "13px",
-                lineHeight: "1.5"
-            },
-            ".cm-content": {
-                fontFamily: "Menlo, Monaco, 'Courier New', monospace",
-                fontSize: "12px"
-            },
-            ".cm-gutter": {
-                fontFamily: "inherit",
-                fontSize: "inherit"
-            }
-        })
+        // EditorView.theme({
+        //     "&": {
+        //         fontFamily: "'SF Mono', Monaco, 'Cascadia Code', monospace",
+        //         fontSize: "13px",
+        //         lineHeight: "1.5",
+        //         backgroundColor: "#ffffff",  // 纯白背景
+        //         color: "#24292e"             // 深灰文字（类似 GitHub）
+        //     },
+        //     ".cm-content": {
+        //         fontFamily: "Menlo, Monaco, 'Courier New', monospace",
+        //         fontSize: "12px",
+        //         color: "#24292e",
+        //         caretColor: "#0366d6"        // 蓝色光标，更醒目
+        //     },
+        //     ".cm-gutter": {
+        //         fontFamily: "inherit",
+        //         fontSize: "inherit",
+        //         backgroundColor: "#f6f8fa",  // 浅灰 gutter 背景
+        //         color: "#6a737d"             // 灰色行号
+        //     },
+        //     ".cm-gutters": {
+        //         backgroundColor: "#f6f8fa",
+        //         borderRight: "1px solid #e1e4e8"
+        //     },
+        //     ".cm-activeLine": {
+        //         backgroundColor: "#ffd33d1a" // 浅黄高亮当前行
+        //     },
+        //     ".cm-activeLineGutter": {
+        //         backgroundColor: "#f6f8fa"
+        //     },
+        //     ".cm-selectionBackground, ::selection": {
+        //         backgroundColor: "#0366d699" // 半透明蓝色选中背景
+        //     },
+        //     "&.cm-focused .cm-selectionBackground": {
+        //         backgroundColor: "#0366d699"
+        //     },
+        //     ".cm-cursor, .cm-dropCursor": {
+        //         borderLeftColor: "#0366d6"   // 蓝色光标
+        //     },
+        //     ".cm-matchingBracket, .cm-nonmatchingBracket": {
+        //         backgroundColor: "#0366d633",
+        //         outline: "1px solid #0366d666"
+        //     }
+        // }, { dark: true }),
+        // 新增：绑定 Ctrl+S（Windows/Linux） / Cmd+S（Mac） 保存事件
+        Prec.highest(  // 使用最高优先级，确保不会被其他 keymap 覆盖
+            keymap.of([
+                {
+                    key: 'Ctrl-s',      // Windows/Linux
+                    mac: 'Cmd-s',       // Mac
+                    run: (view) => {
+                        prev_save_graph_tm_ms = 0;
+                        TimeToSaveGraph()
+                        return true;  // 返回 true 表示事件已处理
+                    },
+                    preventDefault: true  // 防止触发浏览器默认保存对话框
+                }
+            ])
+        )
     ]
 
     // 添加主题
-    if (isDark) {
+    console.log("default is isDark: ", isDark.value)
+    if (isDark.value) {
         extensions.push(themeCompartment.of(oneDark))
+    } else {
+        extensions.push(themeCompartment.of([
+            lightTheme,
+            syntaxHighlighting(lightHighlightStyle)  // 同时切换高亮风格
+        ]))
     }
 
     const state = EditorState.create({
@@ -671,13 +801,21 @@ const initEditor = () => {
     editorView.dom.addEventListener('keydown', updateCursorFromEvent)
 }
 
-function setTheme(name) {
-  if (!editorView) return
-  const theme = themes[name] || []
-  themeCompartment.reconfigure(theme)
-  editorView.dispatch({
-    effects: themeCompartment.reconfigure(theme)
-  })
+// 切换到白色主题的函数（随时调用）
+function switchToLightTheme() {
+    editorView.dispatch({
+        effects: themeCompartment.reconfigure([
+            lightTheme,
+            syntaxHighlighting(lightHighlightStyle)  // 同时切换高亮风格
+        ])
+    });
+}
+
+// 切换回暗色主题的函数（可选）
+function switchToDarkTheme() {
+    editorView.dispatch({
+        effects: themeCompartment.reconfigure(oneDark)
+    });
 }
 
 // 更新光标位置
@@ -703,12 +841,41 @@ onMounted(() => {
         initEditor()
         console.log('Editor initialized.')
     })
+
+    second_timer = setInterval(() => {
+        TimeToSaveGraph();
+    }, 1000);
+    
 })
+
+const TimeToSaveGraph = () => {
+    var now_tm_ms = getTimestamp();
+    if (prev_saved_code.value != codeValue.value && (prev_save_graph_tm_ms + 10 < now_tm_ms)) {
+        var json_data = {
+            "code": codeValue.value,
+            "address": contractAddress.value,
+        }
+        axios
+            .post('/pipeline/update_pipline_graph/' + pipeline_id.value + "/", qs.stringify({
+                'graph': JSON.stringify(json_data),
+            }))
+            .then(response => {
+                console.log("save pipeline: %d", pipeline_id.value);
+            })
+            .catch(error => console.log(error))
+        prev_save_graph_tm_ms = now_tm_ms;
+        prev_saved_code.value = codeValue.value
+    }
+}
 
 onUnmounted(() => {
     emitterOff()
     if (editorView) {
         editorView.destroy()
+    }
+
+    if (second_timer) {
+        clearInterval(second_timer);
     }
 })
 
@@ -722,8 +889,9 @@ watch(codeValue, (newValue) => {
                 insert: newValue
             }
         })
+
         editorView.dispatch(transaction)
-        solidityCode.value = editorView.state.doc.toString();
+        console.log("solidity code updated: ", newValue)
     }
 })
 

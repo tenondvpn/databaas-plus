@@ -257,7 +257,7 @@ const submitForm = async (formEl: FormInstance | undefined) => {
         "description": ruleForm.desc,
         "project_id": project_id,
         "tags": ruleForm.tags.toString(),
-        "type": 2,
+        "type": 0,
     }
     console.log(params)
     if (!formEl) return
@@ -395,7 +395,7 @@ const load = (node, resolve) => {
     } else {
         params = {
             id: node_id,
-            type: 2,
+            type: 0,
             get_pipe: 0,
         }
     }
