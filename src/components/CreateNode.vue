@@ -609,10 +609,6 @@ const load = (node, resolve) => {
             // var json_obj = JSON.parse(response)
             var get_processor_data = [];
             for (const item of response.data) {
-                if (!item.is_project) {
-                    continue
-                }
-
                 get_processor_data.push({
                     id: item.id,
                     value: item.id,
