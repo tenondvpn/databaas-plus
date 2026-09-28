@@ -15,7 +15,7 @@
 <script setup>
 import { ref } from 'vue';
 
-const externalLink = ref('http://82.156.224.174:8003/#/index');
+const externalLink = ref('http://192.168.26.142:8003/#/index');
 
 // 你可以动态改变这个链接
 // const changeLink = () => {
