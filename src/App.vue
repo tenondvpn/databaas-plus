@@ -1,10 +1,7 @@
 <template>
     <el-menu :default-active="activeIndex" mode="horizontal" style="height: 44px;" :ellipsis="false"
         @select="handleSelect">
-        <el-menu-item index="0">
-            <img v-if="isDark" style="width: 100px" src="./images/shardora.png" alt="Element logo" />
-            <img v-else style="width: 100px" src="./images/blue_shardora.png" alt="Element logo" />
-        </el-menu-item>
+        <el-menu-item index="0" @click="toPipeline">区块链智能计算服务与保障系统</el-menu-item>
         <el-tooltip class="box-item" content="进入流程管理页面，管理自己的流程！">
             <el-menu-item v-if="show_menu" index="1" @click="toPipeline">流程管理</el-menu-item>
         </el-tooltip>
