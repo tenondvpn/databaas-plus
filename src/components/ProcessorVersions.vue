@@ -251,9 +251,9 @@ const loadAllData = () => {
                 for (const history of response.data.history_list) {
                     var type_name = '';
                     var type = history.type;
-                    if (type == 0) {
+                    if (type == 1) {
                         type_name = 'zip';
-                    } else if (type == 1) {
+                    } else if (type == 0) {
                         type_name = 'git';
                     } else if (type == 2) {
                         type_name = 'docker';
