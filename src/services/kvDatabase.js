@@ -301,7 +301,8 @@ export async function prefundGas(baseUrl, privateKeyHex, shardId, contractAddr, 
 const MIN_PREFUND = 100000
 
 // sendTransaction 的默认 gas_limit / gas_price，垫付的余额门槛按它们估算。
-const PREFUND_GAS_LIMIT = 5000000
+// 必须与 sendTransaction 的默认 gasLimit 一致，否则门槛会低估、写入时因余额不足被池子拒掉。
+const PREFUND_GAS_LIMIT = 999999999
 const PREFUND_GAS_PRICE = 1
 
 /**

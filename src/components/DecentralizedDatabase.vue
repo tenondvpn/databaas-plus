@@ -1,9 +1,14 @@
 <template>
-    <div class="kv-page">
-        <el-card shadow="never" class="kv-card">
+    <div class="kv-page" :class="{ 'kv-page--data-expanded': dataExpanded }">
+        <el-card shadow="never" class="kv-card kv-card--config" v-show="!dataExpanded">
             <template #header>
                 <div class="kv-header">
-                    <span class="kv-title">去中心化数据库</span>
+                    <div class="kv-header-left">
+                        <el-button link size="small" @click="configCollapsed = !configCollapsed">
+                            <el-icon><ArrowDown v-if="!configCollapsed" /><ArrowRight v-else /></el-icon>
+                        </el-button>
+                        <span class="kv-title">去中心化数据库</span>
+                    </div>
                     <div class="kv-header-actions">
                         <el-tag :type="contractReady ? 'success' : 'info'" effect="dark" size="small">
                             {{ contractReady ? `已连接 · ${totalKeys} 条` : '未连接' }}
@@ -12,7 +17,7 @@
                 </div>
             </template>
 
-            <el-form :model="form" label-width="110px" label-position="left" class="kv-form">
+            <el-form v-show="!configCollapsed" :model="form" label-width="110px" label-position="left" class="kv-form">
                 <el-row :gutter="20">
                     <el-col :span="12">
                         <el-form-item label="合约地址">
@@ -68,49 +73,66 @@
             </el-form>
         </el-card>
 
-        <el-card shadow="never" class="kv-card">
+        <el-card shadow="never" class="kv-card kv-card--data">
             <template #header>
                 <div class="kv-header">
-                    <span class="kv-title">合约数据</span>
+                    <div class="kv-header-left">
+                        <el-button link size="small" @click="dataCollapsed = !dataCollapsed">
+                            <el-icon><ArrowDown v-if="!dataCollapsed" /><ArrowRight v-else /></el-icon>
+                        </el-button>
+                        <span class="kv-title">合约数据</span>
+                    </div>
                     <div class="kv-header-actions">
                         <el-input v-model="searchText" placeholder="过滤当前页的 key / value" size="small"
                             clearable style="width: 240px" />
+                        <el-button link size="small" :title="dataExpanded ? '退出全屏' : '全屏查看'"
+                            @click="toggleDataExpanded">
+                            <el-icon><FullScreen v-if="!dataExpanded" /><Aim v-else /></el-icon>
+                        </el-button>
                     </div>
                 </div>
             </template>
 
-            <el-table :data="filteredRows" v-loading="loading" border stripe height="420" size="small"
-                empty-text="暂无数据">
-                <el-table-column type="index" label="#" width="60"
-                    :index="(i) => (page - 1) * pageSize + i + 1" />
-                <el-table-column prop="key" label="Key" min-width="240" show-overflow-tooltip />
-                <el-table-column label="Value" min-width="420">
-                    <template #default="{ row }">
-                        <div class="kv-value-cell">
-                            <el-button link type="primary" size="small" @click="openValue(row)">
-                                查看/展开
-                            </el-button>
-                            <span class="kv-value-preview">{{ preview(row.value) }}</span>
-                        </div>
-                    </template>
-                </el-table-column>
-            </el-table>
+            <div v-show="!dataCollapsed" class="kv-table-wrap">
+                <el-table :data="filteredRows" v-loading="loading" border stripe class="kv-table"
+                    :height="tableHeight" size="small" empty-text="暂无数据">
+                    <el-table-column type="index" label="#" width="60" fixed
+                        :index="(i) => (page - 1) * pageSize + i + 1" />
+                    <el-table-column prop="key" label="Key" min-width="240" show-overflow-tooltip />
+                    <el-table-column label="Value" min-width="420">
+                        <template #default="{ row }">
+                            <div class="kv-value-cell">
+                                <el-button link type="primary" size="small" @click="openValue(row)">
+                                    查看/展开
+                                </el-button>
+                                <span class="kv-value-preview">{{ preview(row.value) }}</span>
+                            </div>
+                        </template>
+                    </el-table-column>
+                </el-table>
+            </div>
 
-            <div class="kv-pager">
+            <div v-show="!dataCollapsed" class="kv-pager">
                 <el-pagination v-model:current-page="page" v-model:page-size="pageSize" :total="totalKeys"
                     :page-sizes="[10, 20, 50, 100]" layout="total, sizes, prev, pager, next, jumper"
                     @current-change="loadPage" @size-change="onSizeChange" />
             </div>
         </el-card>
 
-        <el-card shadow="never" class="kv-card">
+        <el-card shadow="never" class="kv-card kv-card--writes" v-show="!dataExpanded">
             <template #header>
                 <div class="kv-header">
-                    <span class="kv-title">最近的写入</span>
+                    <div class="kv-header-left">
+                        <el-button link size="small" @click="writesCollapsed = !writesCollapsed">
+                            <el-icon><ArrowDown v-if="!writesCollapsed" /><ArrowRight v-else /></el-icon>
+                        </el-button>
+                        <span class="kv-title">最近的写入</span>
+                    </div>
                     <span class="kv-hint">本页只记录当前浏览器会话内的写入结果</span>
                 </div>
             </template>
-            <el-table :data="writes" border size="small" height="220" empty-text="本次会话暂无写入">
+            <el-table v-show="!writesCollapsed" :data="writes" border size="small" height="220"
+                empty-text="本次会话暂无写入">
                 <el-table-column prop="key" label="Key" width="220" />
                 <el-table-column label="结果" width="100">
                     <template #default="{ row }">
@@ -137,6 +159,7 @@
 <script lang="ts" setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElNotification } from 'element-plus'
+import { ArrowDown, ArrowRight, FullScreen, Aim } from '@element-plus/icons-vue'
 import {
     getPaginated,
     prefundGas,
@@ -176,7 +199,37 @@ const valueVisible = ref(false)
 const activeRow = ref<any>(null)
 const writes = ref<any[]>([])
 
+// 三张卡片各自可收缩；「合约数据」还可全屏。全屏时其余卡片整体让位，
+// 只留表格与分页占满菜单以下的全部高度。
+const configCollapsed = ref(false)
+const dataCollapsed = ref(false)
+const writesCollapsed = ref(false)
+const dataExpanded = ref(false)
+
+/**
+ * 表格高度。
+ *
+ * el-table 只接受确定的数值或百分号，`calc()` 字符串不走它的高度计算，给百分比
+ * 则要求父层有确定高度 —— 而这里父层高度是 flex 算出来的。所以直接按视口高度
+ * 自己算一个整数：全屏时减去菜单和表头/分页条，非全屏时保持原来的固定值。
+ */
+const MENU_H = 44
+const viewportH = ref(typeof window !== 'undefined' ? window.innerHeight : 800)
+const tableHeight = computed(() => dataExpanded.value
+    ? Math.max(200, viewportH.value - MENU_H - 190)
+    : 420)
+
+function onResize() {
+    viewportH.value = window.innerHeight
+}
+
 const baseUrl = computed(() => shardBaseUrl(form.value.shardId, form.value.nodeUrl))
+
+function toggleDataExpanded() {
+    dataExpanded.value = !dataExpanded.value
+    // 全屏是悬浮层，底层不应跟着滚；退出时再把滚动交还页面
+    document.body.style.overflow = dataExpanded.value ? 'hidden' : ''
+}
 
 const filteredRows = computed(() => {
     const q = searchText.value.trim().toLowerCase()
@@ -339,10 +392,19 @@ const onConfigChanged = async () => {
     }
 }
 
+function onKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && dataExpanded.value) {
+        dataExpanded.value = false
+        document.body.style.overflow = ''
+    }
+}
+
 onMounted(async () => {
     syncFromConfig()
     writes.value = recentWrites()
     window.addEventListener(CONFIG_CHANGED, onConfigChanged)
+    window.addEventListener('keydown', onKeydown)
+    window.addEventListener('resize', onResize)
     if (form.value.contractAddress) {
         await refresh()
     }
@@ -350,25 +412,85 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
     window.removeEventListener(CONFIG_CHANGED, onConfigChanged)
+    window.removeEventListener('keydown', onKeydown)
+    window.removeEventListener('resize', onResize)
+    document.body.style.overflow = ''
 })
 </script>
 
 <style scoped>
+/* 视口减去顶部菜单后的整块区域，滚动只发生在 .kv-page 内部。
+   根节点用 .kv-page 而非 el-main，避免与 Pipeline.vue 里的全局 .el-main 规则串味。 */
 .kv-page {
+    position: relative;
+    height: calc(100vh - 44px);
+    height: calc(100dvh - 44px);
     padding: 12px 16px;
+    box-sizing: border-box;
+    overflow-y: auto;
+    overflow-x: hidden;
     display: flex;
     flex-direction: column;
     gap: 12px;
 }
 
+.kv-page--data-expanded {
+    overflow: hidden;
+    padding: 0;
+}
+
 .kv-card {
     background: var(--el-bg-color);
+    flex-shrink: 0;
+}
+
+/* 全屏：表格卡片脱离常规流，铺满菜单以下的整个区域 */
+.kv-card--data {
+    transition: box-shadow 0.2s;
+}
+
+.kv-page--data-expanded .kv-card--data {
+    position: fixed;
+    top: 44px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2000;
+    margin: 0;
+    border-radius: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.kv-page--data-expanded .kv-card--data :deep(.el-card__body) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.kv-table-wrap {
+    flex: 1;
+    min-height: 0;
+}
+
+.kv-table {
+    width: 100%;
 }
 
 .kv-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 12px;
+}
+
+.kv-header-left {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
 }
 
 .kv-title {
