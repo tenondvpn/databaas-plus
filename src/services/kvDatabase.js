@@ -234,8 +234,13 @@ export async function sendTransaction(opts) {
         try {
             raw = await post(baseUrl, 'transaction', signed.params)
         } catch (e) {
+            console.error('[kv] 提交交易失败（网络层）', { step, nonce, to, error: e?.message ?? e })
             return { ok: false, msg: String(e?.message ?? e), raw: e?.response?.data }
         }
+
+        console.log(`[kv] 提交交易 step=${step} nonce=${nonce} to=${to}`, {
+            txHash: signed.txHash, nodeReply: raw,
+        })
 
         // 节点成功时返回纯文本 "ok"，失败时返回错误串。
         if (typeof raw === 'string' && raw.trim() !== 'ok' && raw.trim() !== '') {
@@ -262,6 +267,7 @@ export async function sendTransaction(opts) {
         // 否则预存不足、gas 不够之类的失败会显示成成功，页面上却查不到数据。
         if (confirm) {
             const done = await waitForReceipt(baseUrl, signed.txHash, { timeoutMs: confirmTimeoutMs })
+            console.log(`[kv] 回执确认 txHash=${signed.txHash}`, done)
             return { ...done, txHash: signed.txHash, from: signed.from, raw }
         }
 
@@ -310,6 +316,8 @@ export async function ensurePrefund(baseUrl, opts) {
     const { privateKeyHex, shardId, contractAddr, userAddr, amount = 3000000 } = opts
 
     const balance = await prefundBalance(baseUrl, contractAddr, userAddr)
+    console.log(`[kv] ensurePrefund 预存账户余额=${balance}（门槛 ${MIN_PREFUND}）`,
+        { contract: contractAddr, user: userAddr })
     // 已经垫过且够用就不再补 —— 重复垫付会把用户账户的余额划走，没有意义
     if (balance >= MIN_PREFUND) {
         return { ok: true, prefunded: false, balance }
@@ -320,12 +328,14 @@ export async function ensurePrefund(baseUrl, opts) {
     // 合约本身必须已部署。地址写错或还没部署时，垫付交易会被节点拒掉，
     // 与其等回来一串状态码，不如在这里直接说清楚。
     if (!await queryAccount(baseUrl, to)) {
+        console.warn(`[kv] 合约账户不存在：${to}`)
         return { ok: false, balance, msg: `合约账户不存在：${to} 上没有已部署的合约，请核对合约地址` }
     }
 
     // 用户账户必须先在链上注册过（test_kv.py 里靠一笔原生转账完成）。
     const userAcc = await queryAccount(baseUrl, userAddr)
     if (!userAcc) {
+        console.warn(`[kv] 写入账户未在链上注册：${userAddr}`)
         return {
             ok: false,
             balance,
@@ -384,11 +394,18 @@ export async function setKeyValue(baseUrl, opts) {
     const to = String(contractAddr).toLowerCase().replace(/^0x/, '')
     const userAddr = opts.fromAddr ?? ''
 
+    console.log(`[kv] 调用合约 set(string,string) key=${key}`, {
+        contract: to, shardId, user: userAddr, valueBytes: value.length,
+    })
+
     if (autoPrefund) {
         const pre = await ensurePrefund(baseUrl, {
             privateKeyHex, shardId, contractAddr, userAddr, amount: prepay,
         })
-        if (!pre.ok) return { ok: false, msg: pre.msg }
+        if (!pre.ok) {
+            console.warn(`[kv] 垫付失败，放弃写入 key=${key}：${pre.msg}`)
+            return { ok: false, msg: pre.msg }
+        }
     }
 
     const input = encodeSet(key, value)

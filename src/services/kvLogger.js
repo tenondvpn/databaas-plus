@@ -5,6 +5,10 @@
 import { getKeypair } from './signing'
 import { setKeyValue, shardBaseUrl } from './kvDatabase'
 
+// 模块加载即打点：控制台看不到这一行，说明部署的构建里根本没有本模块，
+// 后续所有 KV 记录都不会发生 —— 这是排查「没生效」的第一判据。
+console.log('[kv] kvLogger 模块已加载（无本行 = 线上是旧构建）')
+
 const STORAGE_KEY = 'kv_database_config'
 export const CONFIG_CHANGED = 'kv_database_config_changed'
 
@@ -61,7 +65,14 @@ function pushRecent(entry) {
  */
 export function enqueue(payload) {
     const cfg = loadConfig()
-    if (!cfg.enabled || !cfg.contractAddress || !cfg.privateKey) return
+    if (!cfg.enabled || !cfg.contractAddress || !cfg.privateKey) {
+        console.log('[kv] 跳过写入：开关/合约地址/私钥未配齐', {
+            enabled: !!cfg.enabled,
+            contractAddress: cfg.contractAddress || '(空)',
+            hasPrivateKey: !!cfg.privateKey,
+        })
+        return
+    }
 
     const task = async () => {
         const date = new Date()
@@ -72,6 +83,7 @@ export function enqueue(payload) {
 
         const value = JSON.stringify(payload)
         const entry = { key, at: date.toISOString(), size: value.length, payload }
+        console.log(`[kv] 开始写入 key=${key}（${value.length} 字节）`, payload)
 
         try {
             const keypair = getKeypair(cfg.privateKey)
@@ -87,9 +99,13 @@ export function enqueue(payload) {
             entry.ok = res.ok
             entry.msg = res.msg
             entry.txHash = res.txHash
+            console.log(`[kv] 写入结果 key=${key}`, {
+                ok: res.ok, txHash: res.txHash, from: res.from, msg: res.msg,
+            })
         } catch (e) {
             entry.ok = false
             entry.msg = String(e?.message ?? e)
+            console.error(`[kv] 写入抛异常 key=${key}`, e)
         }
         pushRecent(entry)
         return entry
@@ -156,7 +172,10 @@ export function installAxiosLogger(axiosInstance, opts = {}) {
 
         const url = String(reqConfig.url ?? '')
         // 写合约的接口本身不记录，否则每条日志又触发一条日志
-        if (url.includes('/transaction') || url.includes('/abi_query_contract')) return
+        if (url.includes('/transaction') || url.includes('/abi_query_contract')) {
+            console.log(`[kv] 跳过自请求（避免递归）：${url}`)
+            return
+        }
 
         const startedAt = reqConfig.__kvStartedAt
         const record = {
@@ -182,6 +201,12 @@ export function installAxiosLogger(axiosInstance, opts = {}) {
                 },
             durationMs: startedAt ? Date.now() - startedAt : null,
         }
+        const method = String(reqConfig.method ?? 'get').toUpperCase()
+        console.log(`[kv] 捕获请求 ${method} ${url}`, {
+            status: record.response.status,
+            error: record.response.error,
+            durationMs: record.durationMs,
+        })
         enqueue(record)
     }
 }
