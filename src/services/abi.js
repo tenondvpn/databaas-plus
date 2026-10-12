@@ -94,6 +94,40 @@ export function encodeGetPaginated(offset, limit) {
     ]))
 }
 
+/** 动态 string[] 的 ABI 数据段：长度字 + N 个元素偏移 + 各元素数据。
+ *  元素偏移相对「元素区起点」（长度字之后第一个字节）。 */
+function encodeStringArray(arr) {
+    const encoded = arr.map(encodeString)
+    const n = encoded.length
+    const parts = [uint256Bytes(n)]
+    let acc = n * 32
+    for (const e of encoded) {
+        parts.push(uint256Bytes(acc))
+        acc += e.length
+    }
+    for (const e of encoded) parts.push(e)
+    return concat(parts)
+}
+
+/**
+ * 编码 batchSet(string[],string[]) 的完整 calldata。
+ *
+ * 与合约 key_value.sol 的 batchSet(string[] calldata, string[] calldata) 对齐，
+ * 用于把多条记录合并成一笔交易写入，避免每条都发一次交易。
+ */
+export function encodeBatchSet(keys, values) {
+    const keysData = encodeStringArray(keys)
+    const valsData = encodeStringArray(values)
+    const headLen = 64
+    return bytesToHex(concat([
+        hexToBytes(selector('batchSet(string[],string[])')),
+        uint256Bytes(headLen),
+        uint256Bytes(headLen + keysData.length),
+        keysData,
+        valsData,
+    ]))
+}
+
 /**
  * 解码 getPaginated 的回包。
  *

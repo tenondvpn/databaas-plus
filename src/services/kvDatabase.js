@@ -9,6 +9,7 @@ import qs from 'qs'
 import { buildAndSignTx, getKeypair } from './signing'
 import {
     encodeSet,
+    encodeBatchSet,
     encodeGetPaginated,
     decodeEntryArray,
     decodeUint256,
@@ -416,6 +417,45 @@ export async function setKeyValue(baseUrl, opts) {
         prepay,
         confirm: true,
         // step=8 的 nonce 在 合约‖用户 预存账户上
+        nonceAddr: prefundAddress(contractAddr, userAddr),
+    })
+}
+
+/**
+ * 批量调用合约的 batchSet(string[],string[]) 写入多组键值对（单笔交易）。
+ *
+ * 与 setKeyValue 共用同一套垫付/nonce/回执逻辑，区别只在 calldata 换成批量编码。
+ * 键值数量必须一一对应。
+ */
+export async function batchSetKeyValue(baseUrl, opts) {
+    const { privateKeyHex, shardId, contractAddr, keys, values, prepay = 3000000, autoPrefund = true } = opts
+    if (!keys?.length || keys.length !== values?.length) {
+        return { ok: false, msg: '批量写入要求 keys 与 values 等长且非空' }
+    }
+    const to = String(contractAddr).toLowerCase().replace(/^0x/, '')
+    const userAddr = opts.fromAddr ?? ''
+
+    console.log(`[kv] 调用合约 batchSet(string[],string[]) 共 ${keys.length} 条`, {
+        contract: to, shardId, user: userAddr,
+    })
+
+    if (autoPrefund) {
+        const pre = await ensurePrefund(baseUrl, {
+            privateKeyHex, shardId, contractAddr, userAddr, amount: prepay,
+        })
+        if (!pre.ok) {
+            console.warn(`[kv] 垫付失败，放弃批量写入 ${keys.length} 条：${pre.msg}`)
+            return { ok: false, msg: pre.msg }
+        }
+    }
+
+    const input = encodeBatchSet(keys, values)
+    return sendTransaction({
+        baseUrl, privateKeyHex, shardId, to,
+        step: STEP.CONTRACT_EXECUTE,
+        input,
+        prepay,
+        confirm: true,
         nonceAddr: prefundAddress(contractAddr, userAddr),
     })
 }

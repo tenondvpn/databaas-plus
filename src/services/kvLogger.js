@@ -3,7 +3,7 @@
 // 上传是串行的：合约写入的 nonce 由节点的预存账户单独记账，多个写入并发提交
 // 会互相顶掉 nonce，导致交易被拒。这里用一条队列保证同一时刻只有一笔在飞。
 import { getKeypair } from './signing'
-import { setKeyValue, shardBaseUrl } from './kvDatabase'
+import { batchSetKeyValue, shardBaseUrl } from './kvDatabase'
 
 // 模块加载即打点：控制台看不到这一行，说明部署的构建里根本没有本模块，
 // 后续所有 KV 记录都不会发生 —— 这是排查「没生效」的第一判据。
@@ -57,11 +57,30 @@ function pushRecent(entry) {
     if (recent.length > MAX_RECENT) recent.length = MAX_RECENT
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 攒批写入
+//
+// 每条请求都单独发一笔合约交易代价太高（一笔一 nonce、一垫付、一回执），
+// 因此改为先攒在内存缓冲里，满足以下任一条件才用 batchSet 一次性写进合约：
+//   - 缓冲达到 MAX_BATCH_COUNT 条；
+//   - 距上一条进缓冲已过 FLUSH_INTERVAL_MS 毫秒（定时兜底，避免长时间不落链）；
+//   - 缓冲累计字节达到 MAX_BATCH_BYTES（单笔交易 calldata 受 gas 上限约束，
+//     256 条 × 每条约 4KB 会远超 gas，故按字节提前切批）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MAX_BATCH_COUNT = 256
+const FLUSH_INTERVAL_MS = 10000
+const MAX_BATCH_BYTES = 200000
+
+let buffer = []            // 待写入记录：{ key, value, at, size, payload }
+let bufferedBytes = 0
+let flushTimer = null
+
 /**
- * 把一条请求-响应记录排入写入队列。
+ * 把一条请求-响应记录放进缓冲，按需触发批量写入。
  *
- * 同一秒内可能产生多条记录（并发请求），而键的粒度只到秒，因此撞键时
- * 追加序号后缀，避免后一条覆盖前一条。
+ * 键在入缓冲时就定好（含同秒去重后缀），因为键的粒度只到秒，并发请求可能同秒
+ * 产生多条，若等到 flush 时再取时间戳就分不出先后了。
  */
 export function enqueue(payload) {
     const cfg = loadConfig()
@@ -74,46 +93,92 @@ export function enqueue(payload) {
         return
     }
 
+    const date = new Date()
+    let key = timestampKey(date)
+    const suffix = pickFreeSuffix(key)
+    if (suffix > 0) key = `${key}_${suffix}`
+
+    const value = JSON.stringify(payload)
+    buffer.push({ key, value, at: date.toISOString(), size: value.length, payload })
+    bufferedBytes += value.length
+    console.log(`[kv] 入缓冲 key=${key}（${value.length} 字节，当前 ${buffer.length} 条 / ${bufferedBytes} 字节）`)
+
+    if (buffer.length >= MAX_BATCH_COUNT) {
+        console.log(`[kv] 缓冲达到 ${MAX_BATCH_COUNT} 条，立即批量写入`)
+        flush()
+        return
+    }
+    if (bufferedBytes >= MAX_BATCH_BYTES) {
+        console.log(`[kv] 缓冲达到 ${MAX_BATCH_BYTES} 字节，立即批量写入`)
+        flush()
+        return
+    }
+    if (flushTimer === null) {
+        flushTimer = setTimeout(() => { flush() }, FLUSH_INTERVAL_MS)
+    }
+}
+
+/**
+ * 把当前缓冲整批写入合约。由数量/字节阈值或定时器触发。
+ *
+ * 写入本身经串行 queue 排队：一次 flush 是一笔 batchSet 交易，同一时刻只有一笔
+ * 在飞，避免 step=8 的预存账户 nonce 互相顶掉。
+ */
+export function flush() {
+    if (flushTimer !== null) {
+        clearTimeout(flushTimer)
+        flushTimer = null
+    }
+    if (buffer.length === 0) return queue
+
+    const batch = buffer
+    buffer = []
+    bufferedBytes = 0
+    console.log(`[kv] 开始批量写入 ${batch.length} 条`, batch.map(b => b.key))
+
+    const cfg = loadConfig()
     const task = async () => {
-        const date = new Date()
-        let key = timestampKey(date)
-        // 同秒去重：查询该键是否已写入，撞了就加序号
-        const suffix = await pickFreeSuffix(key)
-        if (suffix > 0) key = `${key}_${suffix}`
-
-        const value = JSON.stringify(payload)
-        const entry = { key, at: date.toISOString(), size: value.length, payload }
-        console.log(`[kv] 开始写入 key=${key}（${value.length} 字节）`, payload)
-
+        const keys = batch.map(b => b.key)
+        const values = batch.map(b => b.value)
+        let res
         try {
             const keypair = getKeypair(cfg.privateKey)
-            const res = await setKeyValue(shardBaseUrl(cfg.shardId, cfg.nodeUrl), {
+            res = await batchSetKeyValue(shardBaseUrl(cfg.shardId, cfg.nodeUrl), {
                 privateKeyHex: cfg.privateKey,
                 shardId: cfg.shardId ?? 3,
                 contractAddr: cfg.contractAddress,
                 fromAddr: keypair.accountId,
-                key,
-                value,
+                keys,
+                values,
                 prepay: cfg.prepay ?? 3000000,
             })
-            entry.ok = res.ok
-            entry.msg = res.msg
-            entry.txHash = res.txHash
-            console.log(`[kv] 写入结果 key=${key}`, {
-                ok: res.ok, txHash: res.txHash, from: res.from, msg: res.msg,
-            })
         } catch (e) {
-            entry.ok = false
-            entry.msg = String(e?.message ?? e)
-            console.error(`[kv] 写入抛异常 key=${key}`, e)
+            res = { ok: false, msg: String(e?.message ?? e) }
+            console.error(`[kv] 批量写入抛异常（${batch.length} 条）`, e)
         }
-        pushRecent(entry)
-        return entry
+        console.log(`[kv] 批量写入结果（${batch.length} 条）`, {
+            ok: res.ok, txHash: res.txHash, from: res.from, msg: res.msg,
+        })
+        // 整批共享一笔交易的结果，逐条回填供管理页面展示
+        for (const b of batch) {
+            pushRecent({
+                key: b.key, at: b.at, size: b.size, payload: b.payload,
+                ok: res.ok, msg: res.msg, txHash: res.txHash,
+            })
+        }
+        // 等待期间又攒下的记录，重新起定时器
+        if (buffer.length > 0 && flushTimer === null) {
+            flushTimer = setTimeout(() => { flush() }, FLUSH_INTERVAL_MS)
+        }
     }
 
-    // 排队，但把异常吞掉，避免一条失败阻断后续写入
     queue = queue.then(task).catch(() => {})
     return queue
+}
+
+// 页面关闭前把残留缓冲冲掉，否则最多 255 条记录会随之丢失。
+if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', () => { flush() })
 }
 
 // 撞键只可能发生在同一秒内（键自带秒级时间戳），所以记忆只需覆盖当前这一秒：
