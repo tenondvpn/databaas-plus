@@ -200,9 +200,24 @@ export async function sendTransaction(opts) {
     let nonce = opts.nonce
     let lastErr = ''
 
+    // nonce 记在哪个账户上由 step 决定，不能一律用 to：
+    // step=8 走 `合约‖用户` 预存账户，其余（含 step=7 垫付）走用户自己的账户。
+    // 如果拿合约地址去查 nonce，通常查不到而返回 1，节点会回 kTxUserNonceInvalid。
+    // 对应 shardora_sdk.py 的 `nonce_addr = to + my_addr if step in (8, 9) else my_addr`
+    // （step=9 退预存前端未实现，等实现时在此一并加入）。
+    const signer = getKeypair(privateKeyHex).accountId
+    const idFor = (addr) => {
+        const hex = String(addr ?? '').replace(/^0x/, '').toLowerCase()
+        return hex.length === 40 ? hex : ''
+    }
+    const settleAddr = step === STEP.CONTRACT_EXECUTE
+        ? prefundAddress(to, signer)
+        : signer
+    const nonceAddrResolved = idFor(nonceAddr) || settleAddr
+
     for (let attempt = 0; attempt <= retries; attempt++) {
         if (nonce === undefined) {
-            nonce = await nextNonce(baseUrl, nonceAddr ?? to)
+            nonce = await nextNonce(baseUrl, nonceAddrResolved)
         }
 
         let signed
@@ -226,10 +241,18 @@ export async function sendTransaction(opts) {
         if (typeof raw === 'string' && raw.trim() !== 'ok' && raw.trim() !== '') {
             lastErr = raw.trim()
             if (lastErr.includes('kTxUserNonceInvalid') && attempt < retries) {
-                // 上一笔已确认，nonce 变了 —— 等 1 秒后重新查询再试。
-                // Python SDK 同样是 1 秒一轮、最多 30 轮（链上出块没那么快，重试太少会白失败）。
+                // nonce 冲突说明池子里已经有一笔同 nonce 的交易（多半是上一次提交
+                // 还没落块）。等它落块后重新查一次该账户的 nonce 再 +1 重签。
+                // Python SDK 是「1 秒一轮、等 cur_nonce != old_nonce」，
+                // 这里同样先等再查，不能置空后立刻重查 —— 那会读到同一个旧值再撞一次。
+                const stale = nonce
                 await new Promise(r => setTimeout(r, 1000))
                 nonce = undefined
+                for (let w = 0; w < retries; w++) {
+                    const cur = await nextNonce(baseUrl, nonceAddrResolved)
+                    if (cur !== stale) break
+                    await new Promise(r => setTimeout(r, 1000))
+                }
                 continue
             }
             return { ok: false, msg: lastErr, raw }
