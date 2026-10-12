@@ -75,6 +75,7 @@ import { ElNotification } from 'element-plus'
 import { Message, Iphone } from '@element-plus/icons-vue'
 import emitter from "./EventBus.js";
 import { ElMessage } from "element-plus";
+import { setUserName } from "../services/identity";
 
 
 onMounted(() => {
@@ -118,6 +119,8 @@ export default {
                 console.log("2")
                 const token = response.data.access;
                 localStorage.setItem('access_token', response.data.access)
+                // 请求日志要能标明是谁发起的，token 不透明时还得靠这里存
+                setUserName(loginForm.account)
                 // localStorage.setItem('refresh_token', response.data.refresh)
 
                 axios.defaults.headers.common['Authorization'] = `Bearer ${token}`; // 设置默认请求头

@@ -134,6 +134,11 @@
             <el-table v-show="!writesCollapsed" :data="writes" border size="small" height="220"
                 empty-text="本次会话暂无写入">
                 <el-table-column prop="key" label="Key" width="220" />
+                <el-table-column label="用户" width="140" show-overflow-tooltip>
+                    <template #default="{ row }">
+                        {{ row.payload?.user?.name || '-' }}
+                    </template>
+                </el-table-column>
                 <el-table-column label="结果" width="100">
                     <template #default="{ row }">
                         <el-tag :type="row.ok ? 'success' : 'danger'" size="small">

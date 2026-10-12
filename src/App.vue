@@ -61,6 +61,7 @@ import { ElConfigProvider } from 'element-plus';
 import zhCn from 'element-plus/es/locale/lang/zh-cn';
 import { ElMessage } from 'element-plus';
 import emitter from './components/EventBus';
+import { clearUserName } from './services/identity';
 import { ElNotification } from 'element-plus';
 
 const show_menu = ref(true)
@@ -127,6 +128,7 @@ const handleCommand = async (command) => {
             });
 
             localStorage.setItem('access_token', '')
+            clearUserName()
             axios.defaults.headers.common['Authorization'] = ''; // 设置默认请求头
             ElMessage.success('已退出登录');
             show_menu.value = true
@@ -143,6 +145,7 @@ const toSolidty = () => {
 
 const handleLogout = async () => {
     localStorage.removeItem('user-token');
+    clearUserName();
     delete axios.defaults.headers.common['Authorization'];
     router.push('/login');
     console.log("logout success.")

@@ -3,6 +3,7 @@
 // 上传是串行的：合约写入的 nonce 由节点的预存账户单独记账，多个写入并发提交
 // 会互相顶掉 nonce，导致交易被拒。这里用一条队列保证同一时刻只有一笔在飞。
 import { getKeypair } from './signing'
+import { currentUser } from './identity'
 import { batchSetKeyValue, shardBaseUrl } from './kvDatabase'
 
 // 模块加载即打点：控制台看不到这一行，说明部署的构建里根本没有本模块，
@@ -244,6 +245,11 @@ export function installAxiosLogger(axiosInstance, opts = {}) {
 
         const startedAt = reqConfig.__kvStartedAt
         const record = {
+            user: {
+                name: currentUser() || '(未登录)',
+                // 链上可查的写入账户地址。私钥绝不入记录。
+                address: safeAddress(cfg.privateKey),
+            },
             request: {
                 method: String(reqConfig.method ?? 'get').toUpperCase(),
                 url,
@@ -268,11 +274,22 @@ export function installAxiosLogger(axiosInstance, opts = {}) {
         }
         const method = String(reqConfig.method ?? 'get').toUpperCase()
         console.log(`[kv] 捕获请求 ${method} ${url}`, {
+            user: record.user.name,
             status: record.response.status,
             error: record.response.error,
             durationMs: record.durationMs,
         })
         enqueue(record)
+    }
+}
+
+/** 由写入私钥推出链上账户地址，私钥本身不入记录。推导失败就不带地址。 */
+function safeAddress(privateKey) {
+    if (!privateKey) return ''
+    try {
+        return getKeypair(String(privateKey).trim()).accountId
+    } catch (_) {
+        return ''
     }
 }
 
