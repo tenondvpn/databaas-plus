@@ -194,7 +194,7 @@ export async function sendTransaction(opts) {
     const {
         baseUrl, privateKeyHex, shardId, to, step,
         input, contractBytes, amount = 0, prepay = 0,
-        gasLimit = 5000000, nonceAddr, retries = 30,
+        gasLimit = 999999999, nonceAddr, retries = 30,
         confirm = false, confirmTimeoutMs = 60000,
     } = opts
 
