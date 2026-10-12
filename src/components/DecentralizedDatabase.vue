@@ -61,7 +61,7 @@
 
                 <el-form-item>
                     <el-button type="primary" :loading="testing" @click="testConnection">测试连接</el-button>
-                    <el-button type="success" :loading="prefunding" :disabled="!form.contractAddress"
+                    <el-button type="success" :loading="prefunding" :disabled="!form.contractAddress || !form.privateKey"
                         @click="doPrefund">垫付 gas</el-button>
                     <el-button :disabled="!contractReady" :loading="loading" @click="refresh">刷新数据</el-button>
                 </el-form-item>
@@ -234,14 +234,11 @@ async function testConnection() {
     persist()
     testing.value = true
     try {
-        const res = await probeContract(baseUrl.value, form.value.contractAddress)
+        const res = await syncConnection()
         if (res.ok) {
-            contractReady.value = true
-            totalKeys.value = res.total ?? 0
             ElMessage.success(`连接成功，合约内共 ${res.total} 条数据`)
             await loadPage()
         } else {
-            contractReady.value = false
             ElNotification({ title: '连接失败', message: res.msg, type: 'error', position: 'top-left' })
         }
     } finally {
@@ -262,7 +259,7 @@ async function doPrefund() {
             form.value.contractAddress, form.value.prepay,
         )
         if (res.ok) {
-            ElMessage.success('垫付交易已提交，等待落块后生效')
+            ElMessage.success('垫付已落块，可以开始写入')
         } else {
             ElNotification({ title: '垫付失败', message: res.msg, type: 'error', position: 'top-left' })
         }
@@ -293,9 +290,29 @@ function onSizeChange() {
     loadPage()
 }
 
-async function refresh() {
+/**
+ * 探一次合约并把连接状态同步到界面。
+ *
+ * 连接状态不能只由「测试连接」按钮维护：刷新页面/切菜单回来时也要能恢复，
+ * 否则配置还在、数据也读得出来，界面却显示未连接、按钮全灰。
+ */
+async function syncConnection() {
     const res = await probeContract(baseUrl.value, form.value.contractAddress)
+    contractReady.value = !!res.ok
     if (res.ok) totalKeys.value = res.total ?? 0
+    return res
+}
+
+// 分片 ID 或节点地址一改，baseUrl 就变了，之前那次探测的结论随即失效，
+// 所以要重新探一次。私钥、开关不影响读接口，不必跟着重探。
+let lastProbeTarget = ''
+function probeTarget() {
+    return `${form.value.shardId}|${form.value.nodeUrl}|${form.value.contractAddress}`
+}
+
+async function refresh() {
+    await syncConnection()
+    lastProbeTarget = probeTarget()
     await loadPage()
     writes.value = recentWrites()
 }
@@ -312,7 +329,15 @@ function syncFromConfig() {
     }
 }
 
-const onConfigChanged = () => { writes.value = recentWrites() }
+const onConfigChanged = async () => {
+    writes.value = recentWrites()
+    // 分片/节点/合约地址被改过（可能来自另一个页面或本页表单）时，
+    // 现有的连接状态已经不作数，重新探测。
+    if (form.value.contractAddress && probeTarget() !== lastProbeTarget) {
+        await syncConnection()
+        lastProbeTarget = probeTarget()
+    }
+}
 
 onMounted(async () => {
     syncFromConfig()

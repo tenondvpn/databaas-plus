@@ -100,21 +100,101 @@ export async function nextNonce(baseUrl, nonceAddr) {
     return acc ? parseInt(acc.nonce ?? '0', 10) + 1 : 1
 }
 
+/**
+ * 预存账户的余额读数。账户不存在时节点返回 `get address failed from cache: ...`
+ * 而不是 0，因此把「查不到」记成 0，两种写法在下游处理一致。
+ */
+export async function prefundBalance(baseUrl, contractAddr, userAddr) {
+    const acc = await queryAccount(baseUrl, prefundAddress(contractAddr, userAddr))
+    return acc ? Number(acc.balance ?? 0) : 0
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 写：提交交易
 // ─────────────────────────────────────────────────────────────────────────────
+
+// 回执状态。节点在交易刚进池、还没落块时也回 HTTP 200，
+// 只有拿到终态才算有结论 —— 这与 Python SDK 的 wait_for_receipt 一致。
+const RECEIPT_PENDING = new Set([10001, 10003])   // kMessageHandle / kTxAccept
+const RECEIPT_NOT_EXISTS = 100010                  // kNotExists
+const RECEIPT_SUCCESS = 0                          // kConsensusSuccess
+
+/**
+ * 轮询交易回执，直到落块或超时。
+ *
+ * `/transaction` 只要交易被池子收下就返回 "ok"，那**不代表**共识通过 ——
+ * 校验失败（地址不存在、预存不足、gas 不够）都发生在入池之后。
+ * 只看 "ok" 会把必然失败的交易报成成功，所以这里必须回执确认。
+ */
+export async function waitForReceipt(baseUrl, txHash, { timeoutMs = 60000, pollMs = 1000 } = {}) {
+    const deadline = Date.now() + timeoutMs
+    let notExists = 0
+
+    while (Date.now() < deadline) {
+        let data
+        try {
+            data = await post(baseUrl, 'transaction_receipt', { tx_hash: txHash })
+        } catch (_) {
+            data = null
+        }
+
+        const status = data && typeof data === 'object' ? Number(data.status) : NaN
+
+        if (Number.isFinite(status)) {
+            if (status === RECEIPT_SUCCESS) {
+                return { ok: true, status, msg: 'ok', receipt: data }
+            }
+            if (RECEIPT_PENDING.has(status)) {
+                notExists = 0
+            } else if (status === RECEIPT_NOT_EXISTS) {
+                // 入池前的一小段时间查不到是正常的；连续查不到太多轮就当没提交成功
+                if (++notExists >= 10) {
+                    return { ok: false, status, msg: describeStatus(status), receipt: data }
+                }
+            } else {
+                return { ok: false, status, msg: data.msg || describeStatus(status), receipt: data }
+            }
+        }
+
+        await new Promise(r => setTimeout(r, pollMs))
+    }
+
+    return { ok: false, status: null, msg: `等待回执超时（${Math.round(timeoutMs / 1000)}s），交易可能仍在池中` }
+}
+
+/** 把节点状态码翻成人话。表在 src/transport/transport_utils.h */
+function describeStatus(status) {
+    const table = {
+        10001: '交易仍在池中',
+        10003: '交易已受理，等待落块',
+        10005: '地址无效：合约或预存账户不存在',
+        10007: 'nonce 冲突，已有同 nonce 的交易',
+        10009: '请求参数无效',
+        100010: '交易不存在（未进入池子）',
+        5010: '账户余额不足',
+        5030: 'gas 不足',
+        5049: '预存 gas 不足',
+        5051: 'nonce 不合法',
+        5053: '合约已销毁',
+    }
+    return table[status] ?? `交易失败（状态码 ${status}）`
+}
 
 /**
  * 签署并提交一笔交易。
  *
  * 节点在 nonce 冲突时返回 `kTxUserNonceInvalid`，这通常意味着上一笔刚提交的交易
  * 还没落块。此时重新拉取 nonce 并重签发送，而不是直接把错误抛给用户。
+ *
+ * confirm=true 时会等到回执落块再返回。写入类调用应当开启：`/transaction`
+ * 的 "ok" 只代表入池，池内校验失败（地址不存在、预存不足、gas 不够）同样返回 "ok"。
  */
 export async function sendTransaction(opts) {
     const {
         baseUrl, privateKeyHex, shardId, to, step,
         input, contractBytes, amount = 0, prepay = 0,
         gasLimit = 5000000, nonceAddr, retries = 30,
+        confirm = false, confirmTimeoutMs = 60000,
     } = opts
 
     let nonce = opts.nonce
@@ -155,6 +235,13 @@ export async function sendTransaction(opts) {
             return { ok: false, msg: lastErr, raw }
         }
 
+        // "ok" 只说明池子收下了。这里再查回执，把真实的执行结果取回来 ——
+        // 否则预存不足、gas 不够之类的失败会显示成成功，页面上却查不到数据。
+        if (confirm) {
+            const done = await waitForReceipt(baseUrl, signed.txHash, { timeoutMs: confirmTimeoutMs })
+            return { ...done, txHash: signed.txHash, from: signed.from, raw }
+        }
+
         return { ok: true, msg: 'ok', txHash: signed.txHash, from: signed.from, raw }
     }
 
@@ -175,21 +262,93 @@ export async function prefundGas(baseUrl, privateKeyHex, shardId, contractAddr, 
         step: STEP.CONTRACT_GAS_PREFUND,
         amount: 0,
         prepay: amount,
+        confirm: true,
     })
 }
 
-/** 调用合约的 set(string,string) 写入一个键值对 */
-export async function setKeyValue(baseUrl, opts) {
-    const { privateKeyHex, shardId, contractAddr, key, value, prepay = 3000000 } = opts
+// 低于这个余额就重新垫付。gas 用量的量级是「21000 基础 + calldata」，
+// 这个阈值远高于单次写入的开销，又不至于每笔都重垫。
+const MIN_PREFUND = 100000
+
+/**
+ * 保证 `合约‖用户` 预存账户存在且有足够余额。
+ *
+ * 这是合约写入的前置条件，不是可选项：step=8 在入池校验阶段就要读这个账户
+ * （src/pools/tx_pool_manager.cc 的 HandleContractExcute），读不到直接按地址无效
+ * 拒掉。它只会由 step=7(kContractGasPrefund) 创建，所以每次写入前先补齐。
+ *
+ * @returns {{ok:boolean, msg?:string, prefunded?:boolean, balance?:number}}
+ */
+export async function ensurePrefund(baseUrl, opts) {
+    const { privateKeyHex, shardId, contractAddr, userAddr, amount = 3000000 } = opts
+
+    const balance = await prefundBalance(baseUrl, contractAddr, userAddr)
+    // 已经垫过且够用就不再补 —— 重复垫付会把用户账户的余额划走，没有意义
+    if (balance >= MIN_PREFUND) {
+        return { ok: true, prefunded: false, balance }
+    }
+
     const to = String(contractAddr).toLowerCase().replace(/^0x/, '')
+    // 用户账户本身也必须先在链上注册过（test_kv.py 里靠一笔原生转账完成），
+    // 否则连 step=7 都提交不进去，这里提前给出可操作的提示。
+    if (!await queryAccount(baseUrl, userAddr)) {
+        return {
+            ok: false,
+            balance,
+            msg: '写入账户尚未在链上注册：需要先由已激活账户向该地址转一笔原生代币'
+                + '（或用该私钥做过一次转账）后才能写入合约',
+        }
+    }
+
+    const res = await sendTransaction({
+        baseUrl, privateKeyHex, shardId, to,
+        step: STEP.CONTRACT_GAS_PREFUND,
+        amount: 0,
+        prepay: Math.max(amount, MIN_PREFUND),
+        confirm: true,
+    })
+    if (!res.ok) return { ok: false, balance, msg: `垫付 gas 失败：${res.msg}` }
+
+    // 落块后账户余额才更新，给一个短暂的重试窗口
+    let now = balance
+    for (let i = 0; i < 20; i++) {
+        now = await prefundBalance(baseUrl, contractAddr, userAddr)
+        if (now >= MIN_PREFUND) break
+        await new Promise(r => setTimeout(r, 500))
+    }
+    if (now < MIN_PREFUND) {
+        return { ok: false, balance: now, msg: `垫付后预存余额仍不足（${now}）` }
+    }
+    return { ok: true, prefunded: true, balance: now }
+}
+
+/**
+ * 调用合约的 set(string,string) 写入一个键值对。
+ *
+ * 默认 autoPrefund：预存账户不存在时先自动垫付再写。
+ * 关掉它只在预存账户已确认存在时才有意义 —— 否则交易一定会被拒。
+ */
+export async function setKeyValue(baseUrl, opts) {
+    const { privateKeyHex, shardId, contractAddr, key, value, prepay = 3000000, autoPrefund = true } = opts
+    const to = String(contractAddr).toLowerCase().replace(/^0x/, '')
+    const userAddr = opts.fromAddr ?? ''
+
+    if (autoPrefund) {
+        const pre = await ensurePrefund(baseUrl, {
+            privateKeyHex, shardId, contractAddr, userAddr, amount: prepay,
+        })
+        if (!pre.ok) return { ok: false, msg: pre.msg }
+    }
+
     const input = encodeSet(key, value)
     return sendTransaction({
         baseUrl, privateKeyHex, shardId, to,
         step: STEP.CONTRACT_EXECUTE,
         input,
         prepay,
+        confirm: true,
         // step=8 的 nonce 在 合约‖用户 预存账户上
-        nonceAddr: prefundAddress(contractAddr, opts.fromAddr ?? ''),
+        nonceAddr: prefundAddress(contractAddr, userAddr),
     })
 }
 
