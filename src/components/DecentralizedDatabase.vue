@@ -8,11 +8,12 @@
                             <el-icon><ArrowDown v-if="!configCollapsed" /><ArrowRight v-else /></el-icon>
                         </el-button>
                         <span class="kv-title">去中心化数据库</span>
-                    </div>
-                    <div class="kv-header-actions">
                         <el-tag :type="contractReady ? 'success' : 'info'" effect="dark" size="small">
                             {{ contractReady ? `已连接 · ${totalKeys} 条` : '未连接' }}
                         </el-tag>
+                        <el-button size="small" :disabled="!contractReady" :loading="loading" @click="refresh">
+                            刷新数据
+                        </el-button>
                     </div>
                 </div>
             </template>
@@ -68,7 +69,6 @@
                     <el-button type="primary" :loading="testing" @click="testConnection">测试连接</el-button>
                     <el-button type="success" :loading="prefunding" :disabled="!form.contractAddress || !form.privateKey"
                         @click="doPrefund">垫付 gas</el-button>
-                    <el-button :disabled="!contractReady" :loading="loading" @click="refresh">刷新数据</el-button>
                 </el-form-item>
             </el-form>
         </el-card>
@@ -490,8 +490,13 @@ onBeforeUnmount(() => {
 .kv-header-left {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 10px;
     min-width: 0;
+}
+
+/* 收起箭头与标题贴紧，标签/按钮之间留正常间距 */
+.kv-header-left > .el-button.is-link {
+    margin-right: -6px;
 }
 
 .kv-title {
