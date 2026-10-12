@@ -201,7 +201,8 @@ const writes = ref<any[]>([])
 
 // 三张卡片各自可收缩；「合约数据」还可全屏。全屏时其余卡片整体让位，
 // 只留表格与分页占满菜单以下的全部高度。
-const configCollapsed = ref(false)
+// 配置卡（标题「去中心化数据库」）默认收起，进页面先看到数据而不是表单。
+const configCollapsed = ref(true)
 const dataCollapsed = ref(false)
 const writesCollapsed = ref(false)
 const dataExpanded = ref(false)
