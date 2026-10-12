@@ -40,6 +40,7 @@
     "dagre": "^0.8.5",
     "echarts": "^5.5.0",
     "element-plus": "^2.11.1",
+    "ethereum-cryptography": "^2.2.1",
     "insert-css": "^2.0.0",
     "lodash": "^4.17.21",
     "mitt": "^3.0.1",

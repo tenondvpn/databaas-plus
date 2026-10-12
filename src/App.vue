@@ -5,6 +5,9 @@
         <el-tooltip class="box-item" content="进入流程管理页面，管理自己的流程！">
             <el-menu-item v-if="show_menu" index="1" @click="toPipeline">流程管理</el-menu-item>
         </el-tooltip>
+        <el-tooltip class="box-item" content="区块链去中心化数据库，管理合约地址并查询链上数据！">
+            <el-menu-item v-if="show_menu" index="6" @click="toDatabase">去中心化数据库</el-menu-item>
+        </el-tooltip>
         <el-tooltip class="box-item" content="插件管理！">
             <el-menu-item v-if="show_menu" index="3" @click="toProcessor">插件管理</el-menu-item>
         </el-tooltip>
@@ -163,6 +166,10 @@ const toProcessor = () => {
     router.push('/processor');
 }
 
+const toDatabase = () => {
+    router.push('/database');
+}
+
 const isDark = useDark();
 
 const tmp_toggleDark = useToggle(isDark);
@@ -191,6 +198,8 @@ const emitterOn = () => {
             activeIndex.value = '2'
         } else if (path.indexOf('/processor') >= 0) {
             activeIndex.value = '3'
+        } else if (path.indexOf('/database') >= 0) {
+            activeIndex.value = '6'
         } else {
             activeIndex.value = '5'
         }

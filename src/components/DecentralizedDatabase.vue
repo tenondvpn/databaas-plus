@@ -1,0 +1,389 @@
+<template>
+    <div class="kv-page">
+        <el-card shadow="never" class="kv-card">
+            <template #header>
+                <div class="kv-header">
+                    <span class="kv-title">去中心化数据库</span>
+                    <div class="kv-header-actions">
+                        <el-tag :type="contractReady ? 'success' : 'info'" effect="dark" size="small">
+                            {{ contractReady ? `已连接 · ${totalKeys} 条` : '未连接' }}
+                        </el-tag>
+                    </div>
+                </div>
+            </template>
+
+            <el-form :model="form" label-width="110px" label-position="left" class="kv-form">
+                <el-row :gutter="20">
+                    <el-col :span="12">
+                        <el-form-item label="合约地址">
+                            <el-input v-model="form.contractAddress" placeholder="40 位十六进制，可带 0x 前缀"
+                                clearable @change="persist" />
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item label="节点地址">
+                            <el-input v-model="form.nodeUrl" placeholder="留空则走 /api/shardN/ 代理" clearable
+                                @change="persist" />
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+
+                <el-row :gutter="20">
+                    <el-col :span="12">
+                        <el-form-item label="分片 ID">
+                            <el-select v-model="form.shardId" style="width: 100%" @change="persist">
+                                <el-option v-for="s in shards" :key="s" :label="`分片 ${s}`" :value="s" />
+                            </el-select>
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item label="写入私钥">
+                            <el-input v-model="form.privateKey" type="password" show-password
+                                placeholder="用于签名写入交易，仅存本地浏览器" @change="persist" />
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+
+                <el-row :gutter="20">
+                    <el-col :span="12">
+                        <el-form-item label="gas 垫付">
+                            <el-input-number v-model="form.prepay" :min="0" :step="1000000" :controls="false"
+                                style="width: 100%" @change="persist" />
+                        </el-form-item>
+                    </el-col>
+                    <el-col :span="12">
+                        <el-form-item label="记录平台请求">
+                            <el-switch v-model="form.enabled" active-text="开启后每次请求写入合约"
+                                @change="persist" />
+                        </el-form-item>
+                    </el-col>
+                </el-row>
+
+                <el-form-item>
+                    <el-button type="primary" :loading="testing" @click="testConnection">测试连接</el-button>
+                    <el-button type="success" :loading="prefunding" :disabled="!form.contractAddress"
+                        @click="doPrefund">垫付 gas</el-button>
+                    <el-button :disabled="!contractReady" :loading="loading" @click="refresh">刷新数据</el-button>
+                </el-form-item>
+            </el-form>
+        </el-card>
+
+        <el-card shadow="never" class="kv-card">
+            <template #header>
+                <div class="kv-header">
+                    <span class="kv-title">合约数据</span>
+                    <div class="kv-header-actions">
+                        <el-input v-model="searchText" placeholder="过滤当前页的 key / value" size="small"
+                            clearable style="width: 240px" />
+                    </div>
+                </div>
+            </template>
+
+            <el-table :data="filteredRows" v-loading="loading" border stripe height="420" size="small"
+                empty-text="暂无数据">
+                <el-table-column type="index" label="#" width="60"
+                    :index="(i) => (page - 1) * pageSize + i + 1" />
+                <el-table-column prop="key" label="Key" min-width="240" show-overflow-tooltip />
+                <el-table-column label="Value" min-width="420">
+                    <template #default="{ row }">
+                        <div class="kv-value-cell">
+                            <el-button link type="primary" size="small" @click="openValue(row)">
+                                查看/展开
+                            </el-button>
+                            <span class="kv-value-preview">{{ preview(row.value) }}</span>
+                        </div>
+                    </template>
+                </el-table-column>
+            </el-table>
+
+            <div class="kv-pager">
+                <el-pagination v-model:current-page="page" v-model:page-size="pageSize" :total="totalKeys"
+                    :page-sizes="[10, 20, 50, 100]" layout="total, sizes, prev, pager, next, jumper"
+                    @current-change="loadPage" @size-change="onSizeChange" />
+            </div>
+        </el-card>
+
+        <el-card shadow="never" class="kv-card">
+            <template #header>
+                <div class="kv-header">
+                    <span class="kv-title">最近的写入</span>
+                    <span class="kv-hint">本页只记录当前浏览器会话内的写入结果</span>
+                </div>
+            </template>
+            <el-table :data="writes" border size="small" height="220" empty-text="本次会话暂无写入">
+                <el-table-column prop="key" label="Key" width="220" />
+                <el-table-column label="结果" width="100">
+                    <template #default="{ row }">
+                        <el-tag :type="row.ok ? 'success' : 'danger'" size="small">
+                            {{ row.ok ? '成功' : '失败' }}
+                        </el-tag>
+                    </template>
+                </el-table-column>
+                <el-table-column prop="size" label="字节" width="90" />
+                <el-table-column prop="msg" label="信息" min-width="240" show-overflow-tooltip />
+            </el-table>
+        </el-card>
+
+        <el-dialog v-model="valueVisible" :title="activeRow?.key ?? 'Value'" width="70%">
+            <el-input :model-value="prettyValue" type="textarea" :rows="18" readonly />
+            <template #footer>
+                <el-button @click="copyValue">复制</el-button>
+                <el-button type="primary" @click="valueVisible = false">关闭</el-button>
+            </template>
+        </el-dialog>
+    </div>
+</template>
+
+<script lang="ts" setup>
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { ElMessage, ElNotification } from 'element-plus'
+import {
+    getPaginated,
+    prefundGas,
+    probeContract,
+    shardBaseUrl,
+} from '../services/kvDatabase'
+import {
+    CONFIG_CHANGED,
+    loadConfig,
+    recentWrites,
+    saveConfig,
+} from '../services/kvLogger'
+import { getKeypair } from '../services/signing'
+
+// 共识分片。2 号是 root 国会网络，不做交易共识，因此不在此列。
+const shards = [3, 4, 5, 6]
+
+const form = ref({
+    contractAddress: '',
+    nodeUrl: '',
+    shardId: 3,
+    privateKey: '',
+    prepay: 3000000,
+    enabled: false,
+})
+
+const rows = ref([])
+const page = ref(1)
+const pageSize = ref(20)
+const totalKeys = ref(0)
+const loading = ref(false)
+const testing = ref(false)
+const prefunding = ref(false)
+const contractReady = ref(false)
+const searchText = ref('')
+const valueVisible = ref(false)
+const activeRow = ref<any>(null)
+const writes = ref<any[]>([])
+
+const baseUrl = computed(() => shardBaseUrl(form.value.shardId, form.value.nodeUrl))
+
+const filteredRows = computed(() => {
+    const q = searchText.value.trim().toLowerCase()
+    if (!q) return rows.value
+    return rows.value.filter(r =>
+        String(r.key).toLowerCase().includes(q) || String(r.value).toLowerCase().includes(q),
+    )
+})
+
+const prettyValue = computed(() => {
+    if (!activeRow.value) return ''
+    const v = activeRow.value.value
+    try {
+        return JSON.stringify(JSON.parse(v), null, 2)
+    } catch (_) {
+        return v
+    }
+})
+
+function preview(value) {
+    const text = String(value ?? '')
+    return text.length > 160 ? text.slice(0, 160) + '…' : text
+}
+
+function openValue(row) {
+    activeRow.value = row
+    valueVisible.value = true
+}
+
+async function copyValue() {
+    try {
+        await navigator.clipboard.writeText(prettyValue.value)
+        ElMessage.success('已复制')
+    } catch (_) {
+        ElMessage.warning('复制失败，请手动选择文本')
+    }
+}
+
+function persist() {
+    saveConfig({
+        contractAddress: form.value.contractAddress.trim(),
+        nodeUrl: form.value.nodeUrl.trim(),
+        shardId: form.value.shardId,
+        privateKey: form.value.privateKey.trim(),
+        prepay: form.value.prepay,
+        enabled: form.value.enabled,
+    })
+}
+
+async function testConnection() {
+    if (!form.value.contractAddress) {
+        ElMessage.warning('请先填写合约地址')
+        return
+    }
+    persist()
+    testing.value = true
+    try {
+        const res = await probeContract(baseUrl.value, form.value.contractAddress)
+        if (res.ok) {
+            contractReady.value = true
+            totalKeys.value = res.total ?? 0
+            ElMessage.success(`连接成功，合约内共 ${res.total} 条数据`)
+            await loadPage()
+        } else {
+            contractReady.value = false
+            ElNotification({ title: '连接失败', message: res.msg, type: 'error', position: 'top-left' })
+        }
+    } finally {
+        testing.value = false
+    }
+}
+
+async function doPrefund() {
+    if (!form.value.privateKey) {
+        ElMessage.warning('垫付 gas 需要私钥')
+        return
+    }
+    persist()
+    prefunding.value = true
+    try {
+        const res = await prefundGas(
+            baseUrl.value, form.value.privateKey, form.value.shardId,
+            form.value.contractAddress, form.value.prepay,
+        )
+        if (res.ok) {
+            ElMessage.success('垫付交易已提交，等待落块后生效')
+        } else {
+            ElNotification({ title: '垫付失败', message: res.msg, type: 'error', position: 'top-left' })
+        }
+    } finally {
+        prefunding.value = false
+    }
+}
+
+async function loadPage() {
+    if (!form.value.contractAddress) return
+    loading.value = true
+    try {
+        const offset = (page.value - 1) * pageSize.value
+        const res = await getPaginated(baseUrl.value, form.value.contractAddress, offset, pageSize.value)
+        if (res.ok) {
+            rows.value = res.entries
+        } else {
+            rows.value = []
+            ElNotification({ title: '查询失败', message: res.msg, type: 'error', position: 'top-left' })
+        }
+    } finally {
+        loading.value = false
+    }
+}
+
+function onSizeChange() {
+    page.value = 1
+    loadPage()
+}
+
+async function refresh() {
+    const res = await probeContract(baseUrl.value, form.value.contractAddress)
+    if (res.ok) totalKeys.value = res.total ?? 0
+    await loadPage()
+    writes.value = recentWrites()
+}
+
+function syncFromConfig() {
+    const cfg = loadConfig()
+    form.value = {
+        contractAddress: cfg.contractAddress ?? '',
+        nodeUrl: cfg.nodeUrl ?? '',
+        shardId: cfg.shardId ?? 3,
+        privateKey: cfg.privateKey ?? '',
+        prepay: cfg.prepay ?? 3000000,
+        enabled: !!cfg.enabled,
+    }
+}
+
+const onConfigChanged = () => { writes.value = recentWrites() }
+
+onMounted(async () => {
+    syncFromConfig()
+    writes.value = recentWrites()
+    window.addEventListener(CONFIG_CHANGED, onConfigChanged)
+    if (form.value.contractAddress) {
+        await refresh()
+    }
+})
+
+onBeforeUnmount(() => {
+    window.removeEventListener(CONFIG_CHANGED, onConfigChanged)
+})
+</script>
+
+<style scoped>
+.kv-page {
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.kv-card {
+    background: var(--el-bg-color);
+}
+
+.kv-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.kv-title {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.kv-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.kv-hint {
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+}
+
+.kv-form {
+    margin-bottom: -10px;
+}
+
+.kv-value-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.kv-value-preview {
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.kv-pager {
+    margin-top: 12px;
+    display: flex;
+    justify-content: flex-end;
+}
+</style>

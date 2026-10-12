@@ -11,6 +11,7 @@ import AllRuningTasks from '../components/AllRuningTasks.vue';
 import Processor from '../components/Processor.vue';
 import emitter from '../components/EventBus';
 import Solidity from '../components/Solidity.vue';
+import DecentralizedDatabase from '../components/DecentralizedDatabase.vue';
 
 const routes = [
   { path: '/register', component: Register },
@@ -21,6 +22,7 @@ const routes = [
   { path: '/runing', component: AllRuningTasks, meta: { requiresAuth: true } },
   { path: '/processor', component: Processor, meta: { requiresAuth: true } },
   { path: '/solidity', component: Solidity, meta: { requiresAuth: true } },
+  { path: '/database', component: DecentralizedDatabase, meta: { requiresAuth: true } },
   {
     path: '/dashboard',
     component: ExternalView,

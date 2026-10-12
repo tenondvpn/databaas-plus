@@ -19,6 +19,7 @@ import { faUser, faHome, faCircleInfo } from '@fortawesome/free-solid-svg-icons'
 import { faTwitter, faGithub } from '@fortawesome/free-brands-svg-icons';
 import { createPinia } from 'pinia'
 import emitter from './components/EventBus.js';
+import { installAxiosLogger } from './services/kvLogger.js';
 
 // 4. 将图标添加到库中
 library.add(faUser, faHome, faCircleInfo, faTwitter, faGithub);
@@ -26,6 +27,9 @@ library.add(faUser, faHome, faCircleInfo, faTwitter, faGithub);
 
 // 设置 axios 的基础 URL
 axios.defaults.baseURL = 'http://' + window.location.hostname + ':27001';
+
+// 每次请求-响应写入链上合约（在「去中心化数据库」页面开关与配置）
+installAxiosLogger(axios);
 
 // 在应用启动时检查本地是否有 token
 const token = localStorage.getItem('access_token');
