@@ -6,7 +6,7 @@
 //   写 —— POST /transaction，自定义报文 + secp256k1 签名，需要 prefund 垫付 gas
 import axios from 'axios'
 import qs from 'qs'
-import { buildAndSignTx } from './signing'
+import { buildAndSignTx, getKeypair } from './signing'
 import {
     encodeSet,
     encodeGetPaginated,
