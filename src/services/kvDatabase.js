@@ -293,6 +293,10 @@ export async function prefundGas(baseUrl, privateKeyHex, shardId, contractAddr, 
 // 这个阈值远高于单次写入的开销，又不至于每笔都重垫。
 const MIN_PREFUND = 100000
 
+// sendTransaction 的默认 gas_limit / gas_price，垫付的余额门槛按它们估算。
+const PREFUND_GAS_LIMIT = 5000000
+const PREFUND_GAS_PRICE = 1
+
 /**
  * 保证 `合约‖用户` 预存账户存在且有足够余额。
  *
@@ -312,9 +316,16 @@ export async function ensurePrefund(baseUrl, opts) {
     }
 
     const to = String(contractAddr).toLowerCase().replace(/^0x/, '')
-    // 用户账户本身也必须先在链上注册过（test_kv.py 里靠一笔原生转账完成），
-    // 否则连 step=7 都提交不进去，这里提前给出可操作的提示。
-    if (!await queryAccount(baseUrl, userAddr)) {
+
+    // 合约本身必须已部署。地址写错或还没部署时，垫付交易会被节点拒掉，
+    // 与其等回来一串状态码，不如在这里直接说清楚。
+    if (!await queryAccount(baseUrl, to)) {
+        return { ok: false, balance, msg: `合约账户不存在：${to} 上没有已部署的合约，请核对合约地址` }
+    }
+
+    // 用户账户必须先在链上注册过（test_kv.py 里靠一笔原生转账完成）。
+    const userAcc = await queryAccount(baseUrl, userAddr)
+    if (!userAcc) {
         return {
             ok: false,
             balance,
@@ -323,11 +334,28 @@ export async function ensurePrefund(baseUrl, opts) {
         }
     }
 
+    // 垫付的钱是从用户自己账户扣的，不是凭空生出来的。
+    // 入池校验（tx_pool_manager.cc:1358）要求：
+    //   balance >= amount + contract_prefund + gas_limit * gas_price
+    // 注意这里乘的是 gas_limit（默认 500 万）而不是实际用量，所以门槛很高。
+    const need = Math.max(amount, MIN_PREFUND)
+    const required = need + PREFUND_GAS_LIMIT * PREFUND_GAS_PRICE
+    const userBalance = Number(userAcc.balance ?? 0)
+    if (userBalance < required) {
+        return {
+            ok: false,
+            balance,
+            msg: `写入账户余额不足：垫付 ${need} + 预留 gas ${required - need}，`
+                + `共需 ${required}，当前余额 ${userBalance}。`
+                + '请先从其他已激活账户向该地址转入原生代币。',
+        }
+    }
+
     const res = await sendTransaction({
         baseUrl, privateKeyHex, shardId, to,
         step: STEP.CONTRACT_GAS_PREFUND,
         amount: 0,
-        prepay: Math.max(amount, MIN_PREFUND),
+        prepay: need,
         confirm: true,
     })
     if (!res.ok) return { ok: false, balance, msg: `垫付 gas 失败：${res.msg}` }
