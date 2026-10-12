@@ -22,6 +22,19 @@ export const STEP = {
     CONTRACT_EXECUTE: 8,
 }
 
+/**
+ * 专用 axios 实例。
+ *
+ * 不能直接用全局 axios：main.js 在登录后会给它挂上
+ * `Authorization: Bearer <token>`，而 Authorization 不在 CORS 简单请求头里，
+ * 一旦带上，浏览器就会先发 OPTIONS 预检。链节点（uWS）只实现了 POST，
+ * 对 OPTIONS 一律回 404，于是真正的 POST 还没发出去就被浏览器拦掉了。
+ *
+ * 这里用独立实例并且 withCredentials=false，既不继承那个全局头，
+ * 也不带 Cookie —— 链上调用本来就不需要平台的登录态。
+ */
+const chain = axios.create({ withCredentials: false })
+
 // 节点返回 text/plain，即使内容是 JSON —— 不要交给 axios 自动解析。
 const textTransform = [(data) => {
     if (typeof data === 'string') {
@@ -43,8 +56,10 @@ export function shardBaseUrl(shardId, explicitUrl) {
 }
 
 async function post(url, endpoint, params, timeout = 15000) {
-    const resp = await axios.post(url + endpoint, qs.stringify(params), {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    const resp = await chain.post(url + endpoint, qs.stringify(params), {
+        // 既不要显式声明 Content-Type（qs 序列化后 axios 会自动带上
+        // application/x-www-form-urlencoded，且它本就是 CORS 简单类型），
+        // 也不要任何自定义头，最大限度避免预检。
         timeout,
         responseType: 'text',
         transformResponse: textTransform,
