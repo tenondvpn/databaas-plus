@@ -1047,7 +1047,9 @@ graph.unbindKey('backspace')  // 顺便把 Backspace 也干掉
             }
 
             ElMessage.success(nodeIds.length > 1 ? `拷贝 ${nodeIds.length} 个任务成功！` : "拷贝任务成功！")
-            DirectSaveGraph()
+            // relayout fetches fresh data from backend and re-runs DagreLayout,
+            // which correctly positions all new nodes and edges
+            relayout()
         })
         .catch(() => {})
 
