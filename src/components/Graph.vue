@@ -246,6 +246,7 @@ import { DataUri } from '@antv/x6'
 import { useEventListener } from '@vueuse/core'
 
 const auto_refresh_task = ref(false)
+const copied_task_id = ref('')  // persists across pipeline switches for cross-pipeline paste
 
 const show_task_vue = ref(false)
 const drawer_direction = ref<DrawerProps['direction']>('rtl')
@@ -888,6 +889,7 @@ graph.unbindKey('backspace')  // 顺便把 Backspace 也干掉
         const cells = graph.getSelectedCells()
         if (cells.length) {
             graph.copy(cells)
+            copied_task_id.value = cells[0].id  // save for cross-pipeline paste
         }
         return true
     })
@@ -955,11 +957,15 @@ graph.unbindKey('backspace')  // 顺便把 Backspace 也干掉
     })
 
     graph.bindKey(['meta+v', 'ctrl+v'], () => {
-        if (graph.isClipboardEmpty()) {
+        // Read the id captured on Ctrl+C rather than the current selection:
+        // after switching pipelines nothing is selected, and X6's own clipboard
+        // is per-graph so isClipboardEmpty() would block the paste outright.
+        const copied_task_id_val = copied_task_id.value
+        if (!copied_task_id_val) {
+            ElMessage.warning("请先复制一个任务")
             return;
         }
 
-        const selected = graph.getSelectedCells()[0]  // 假设选中一个节点
         ElMessageBox.confirm("确定要拷贝任务吗？", "提示", {
             confirmButtonText: "确定",
             cancelButtonText: "取消",
@@ -969,7 +975,7 @@ graph.unbindKey('backspace')  // 顺便把 Backspace 也干掉
            axios
                 .post('/pipeline/copy_task/', qs.stringify({
                     "dest_pl_id": pipeline_id.value,
-                    "task_id": selected.id
+                    "task_id": copied_task_id_val
                 }))
                 .then(response => {
                     if (response.status != 200 || response.data.status != 0) {
