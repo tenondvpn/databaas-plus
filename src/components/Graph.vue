@@ -246,7 +246,8 @@ import { DataUri } from '@antv/x6'
 import { useEventListener } from '@vueuse/core'
 
 const auto_refresh_task = ref(false)
-const copied_task_id = ref('')  // persists across pipeline switches for cross-pipeline paste
+// persists across pipeline switches; stores all selected node ids + edges between them
+const copied_cells = ref<{ nodeIds: string[], edges: Array<{source: string, target: string}> } | null>(null)
 
 const show_task_vue = ref(false)
 const drawer_direction = ref<DrawerProps['direction']>('rtl')
@@ -887,10 +888,20 @@ graph.unbindKey('backspace')  // 顺便把 Backspace 也干掉
     // #region 快捷键与事件
     graph.bindKey(['meta+c', 'ctrl+c'], () => {
         const cells = graph.getSelectedCells()
-        if (cells.length) {
-            graph.copy(cells)
-            copied_task_id.value = cells[0].id  // save for cross-pipeline paste
-        }
+        const nodes = cells.filter(c => c.isNode())
+        if (!nodes.length) return true
+        graph.copy(cells)
+        const nodeIds = nodes.map(n => n.id)
+        const nodeIdSet = new Set(nodeIds)
+        // collect all graph edges whose both endpoints are in the selection
+        const edges = graph.getEdges()
+            .filter(e => {
+                const s = e.getSourceNode()?.id
+                const t = e.getTargetNode()?.id
+                return s && t && nodeIdSet.has(s) && nodeIdSet.has(t)
+            })
+            .map(e => ({ source: e.getSourceNode()!.id, target: e.getTargetNode()!.id }))
+        copied_cells.value = { nodeIds, edges }
         return true
     })
     graph.bindKey(['meta+x', 'ctrl+x'], () => {
@@ -957,13 +968,9 @@ graph.unbindKey('backspace')  // 顺便把 Backspace 也干掉
     })
 
     graph.bindKey(['meta+v', 'ctrl+v'], () => {
-        // Read the id captured on Ctrl+C rather than the current selection:
-        // after switching pipelines nothing is selected, and X6's own clipboard
-        // is per-graph so isClipboardEmpty() would block the paste outright.
-        const copied_task_id_val = copied_task_id.value
-        if (!copied_task_id_val) {
+        if (!copied_cells.value || !copied_cells.value.nodeIds.length) {
             ElMessage.warning("请先复制一个任务")
-            return;
+            return true
         }
 
         ElMessageBox.confirm("确定要拷贝任务吗？", "提示", {
@@ -971,35 +978,79 @@ graph.unbindKey('backspace')  // 顺便把 Backspace 也干掉
             cancelButtonText: "取消",
             type: "info",
         })
-        .then(() => {
-           axios
-                .post('/pipeline/copy_task/', qs.stringify({
-                    "dest_pl_id": pipeline_id.value,
-                    "task_id": copied_task_id_val
-                }))
-                .then(response => {
-                    if (response.status != 200 || response.data.status != 0) {
+        .then(async () => {
+            const { nodeIds, edges } = copied_cells.value!
+            const idMap = new Map<string, string>()
+            const taskInfos: any[] = []
+
+            // Step 1: copy each task, build old→new id map
+            for (const oldId of nodeIds) {
+                try {
+                    const response = await axios.post('/pipeline/copy_task/', qs.stringify({
+                        "dest_pl_id": pipeline_id.value,
+                        "task_id": oldId
+                    }))
+                    if (response.status !== 200 || response.data.status !== 0) {
                         ElMessage.warning("拷贝任务失败：" + response.data.msg)
-                    } else {
-                        var task_info = {
-                            "id": response.data.data.id,
-                            "name": response.data.data.name,
-                            "proc_type": response.data.data.proc_type,
-                            "description": response.data.data.description,
-                            "prev_task_ids": ""
-                        }
-                        
-                        add_new_task(task_info);
-                        ElMessage.success("拷贝任务成功！")
+                        return
                     }
-                })
-                .catch(error => {
-                    ElMessage.error("创建任务失败：" + error)
-                    console.log(error)
-                })
+                    const newId = String(response.data.data.id)
+                    idMap.set(oldId, newId)
+                    taskInfos.push({
+                        id: newId,
+                        name: response.data.data.name,
+                        proc_type: response.data.data.proc_type,
+                        description: response.data.data.description,
+                        prev_task_ids: ""
+                    })
+                } catch (error) {
+                    ElMessage.error("拷贝任务失败：" + error)
+                    return
+                }
+            }
+
+            // Step 2: add all nodes to graph (edges handled separately)
+            for (const taskInfo of taskInfos) {
+                add_new_task(taskInfo)
+            }
+
+            // Step 3: recreate edges between the copied nodes using remapped ids
+            for (const edge of edges) {
+                const newSource = idMap.get(edge.source)
+                const newTarget = idMap.get(edge.target)
+                if (!newSource || !newTarget) continue
+                try {
+                    await axios.post('/pipeline/link_task/', qs.stringify({
+                        "prev_task_id": newSource,
+                        "next_task_id": newTarget
+                    }))
+                    graph.addEdge({
+                        source: { cell: newSource, port: 'port-bottom' },
+                        target: { cell: newTarget, port: 'port-top' },
+                        attrs: {
+                            line: {
+                                stroke: '#A2B1C3',
+                                strokeWidth: 2,
+                                targetMarker: { name: 'block', width: 12, height: 8 },
+                            },
+                        },
+                        router: { name: 'manhattan' },
+                        connector: { name: 'rounded', args: { radius: 8 } },
+                        anchor: 'center',
+                        connectionPoint: 'anchor',
+                        allowBlank: false,
+                        snap: { radius: 20 },
+                    })
+                } catch (error) {
+                    console.error("添加依赖失败：", error)
+                }
+            }
+
+            ElMessage.success(nodeIds.length > 1 ? `拷贝 ${nodeIds.length} 个任务成功！` : "拷贝任务成功！")
+            DirectSaveGraph()
         })
-        .catch((error) => {});
-    
+        .catch(() => {})
+
         return true
     })
 
