@@ -1009,12 +1009,7 @@ graph.unbindKey('backspace')  // 顺便把 Backspace 也干掉
                 }
             }
 
-            // Step 2: add all nodes to graph (edges handled separately)
-            for (const taskInfo of taskInfos) {
-                add_new_task(taskInfo)
-            }
-
-            // Step 3: recreate edges between the copied nodes using remapped ids
+            // Step 2: persist edges between the copied nodes (backend only)
             for (const edge of edges) {
                 const newSource = idMap.get(edge.source)
                 const newTarget = idMap.get(edge.target)
@@ -1024,31 +1019,14 @@ graph.unbindKey('backspace')  // 顺便把 Backspace 也干掉
                         "prev_task_id": newSource,
                         "next_task_id": newTarget
                     }))
-                    graph.addEdge({
-                        source: { cell: newSource, port: 'port-bottom' },
-                        target: { cell: newTarget, port: 'port-top' },
-                        attrs: {
-                            line: {
-                                stroke: '#A2B1C3',
-                                strokeWidth: 2,
-                                targetMarker: { name: 'block', width: 12, height: 8 },
-                            },
-                        },
-                        router: { name: 'manhattan' },
-                        connector: { name: 'rounded', args: { radius: 8 } },
-                        anchor: 'center',
-                        connectionPoint: 'anchor',
-                        allowBlank: false,
-                        snap: { radius: 20 },
-                    })
                 } catch (error) {
                     console.error("添加依赖失败：", error)
                 }
             }
 
+            // Step 3: fetch fresh state from backend and redraw with DagreLayout in one shot,
+            // avoiding any intermediate flash of wrongly-positioned nodes
             ElMessage.success(nodeIds.length > 1 ? `拷贝 ${nodeIds.length} 个任务成功！` : "拷贝任务成功！")
-            // relayout fetches fresh data from backend and re-runs DagreLayout,
-            // which correctly positions all new nodes and edges
             relayout()
         })
         .catch(() => {})
